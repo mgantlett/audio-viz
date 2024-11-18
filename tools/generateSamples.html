@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sample Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .sample-list {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .sample-list h3 {
+            margin-top: 0;
+        }
+        .sample-item {
+            margin: 5px 0;
+            padding: 5px;
+            background: white;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sample Generator</h1>
+        <p>Click the button below to generate audio samples for the tracker:</p>
+        <button id="generateBtn" onclick="startGeneration()">Generate Samples</button>
+        <div id="status"></div>
+
+        <div class="sample-list">
+            <h3>Samples to be generated:</h3>
+            <div class="sample-item">kick.wav - Kick drum (60 Hz)</div>
+            <div class="sample-item">snare.wav - Snare drum (200 Hz)</div>
+            <div class="sample-item">hihat.wav - Hi-hat (1000 Hz)</div>
+            <div class="sample-item">bass.wav - Bass synth (50 Hz)</div>
+            <div class="sample-item">lead.wav - Lead synth (440 Hz)</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initAudio, generateAllSamples } from './generateSamples.js';
+
+        // Make startGeneration available globally
+        window.startGeneration = async function() {
+            const button = document.getElementById('generateBtn');
+            const status = document.getElementById('status');
+            
+            try {
+                button.disabled = true;
+                status.style.display = 'block';
+                status.className = '';
+                status.textContent = 'Initializing audio context...';
+                
+                await initAudio();
+                
+                status.textContent = 'Generating samples...';
+                await generateAllSamples();
+                
+                status.className = 'success';
+                status.textContent = 'Samples generated successfully! Check your downloads folder.';
+            } catch (error) {
+                console.error('Error generating samples:', error);
+                status.className = 'error';
+                status.textContent = 'Error generating samples. Check console for details.';
+            } finally {
+                button.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>

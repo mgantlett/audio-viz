@@ -28,6 +28,7 @@ graph TD
         Scene --> Scene1[Stick Figures]
         Scene --> Scene2[Particle Wave]
         Scene --> Scene3[Beat Scene]
+        Scene3 --> |Shows| Construction[Under Construction Notice]
     end
     
     %% Audio Modes
@@ -53,11 +54,25 @@ graph TD
         Comp --> Dest[Destination]
     end
 
+    %% Module Loading Order
+    subgraph Initialization Flow
+        ModuleLoad[Module Loading] --> SceneManagerInit[SceneManager Init]
+        SceneManagerInit --> UIInit[UI Init]
+        UIInit --> SceneInit[Scene Init]
+        SceneInit --> AudioInit[Audio Init]
+    end
+
+    %% Error Handling Flow
+    subgraph Error Handling
+        Error[Error Detection] --> Display[Display on Canvas]
+        Error --> Console[Console Log]
+        Error --> Cleanup[State Cleanup]
+        Cleanup --> Recovery[Auto Recovery]
+    end
+
     %% State Transitions
     classDef transition fill:#f9f,stroke:#333,stroke-width:2px
-    class AudioState transition
-    class CurrentScene transition
-    class AudioMode transition
+    class AudioState,CurrentScene,AudioMode transition
 
     %% Components
     classDef component fill:#bbf,stroke:#333,stroke-width:2px
@@ -66,3 +81,11 @@ graph TD
     %% Audio
     classDef audio fill:#bfb,stroke:#333,stroke-width:2px
     class BAM,EAM,AB,WebAudio audio
+
+    %% Error Handling
+    classDef error fill:#fbb,stroke:#333,stroke-width:2px
+    class Error,Display,Console,Cleanup,Recovery error
+
+    %% Initialization
+    classDef init fill:#ffb,stroke:#333,stroke-width:2px
+    class ModuleLoad,SceneManagerInit,UIInit,SceneInit,AudioInit init

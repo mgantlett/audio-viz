@@ -1,3 +1,6 @@
+# Audio Visualizer Component Architecture
+
+```mermaid
 graph TD
     %% Core Components
     UI[UIManager] --> |Controls| SM[SceneManager]
@@ -107,3 +110,17 @@ graph TD
     %% Construction Notice
     classDef notice fill:#ffd,stroke:#333,stroke-width:2px
     class Construction notice
+```
+
+## Component Overview
+
+This diagram illustrates the core architecture of the Audio Visualizer system, showing how different components interact and manage state. Key features include:
+
+- **UI Management**: Centralized control through UIManager
+- **Scene System**: Flexible scene management with different visualization types
+- **Audio Processing**: Dual audio manager system for basic and enhanced modes
+- **State Management**: Robust state tracking and error handling
+- **Module Loading**: Ordered initialization process
+- **Error Handling**: Comprehensive error recovery system
+
+The architecture emphasizes modularity and clear separation of concerns, making it easy to extend and maintain the system.

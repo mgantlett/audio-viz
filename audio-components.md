@@ -40,10 +40,20 @@ graph TD
 
     %% UI Components
     subgraph UI Controls
-        UI --> StartBtn[Start Button]
-        UI --> StopBtn[Stop Button]
-        UI --> SceneBtn[Scene Buttons]
-        UI --> Controls[Audio Controls]
+        UI --> Tabs[Tab Navigation]
+        Tabs --> ScenesTab[Scenes Tab]
+        Tabs --> ControlsTab[Controls Tab]
+        Tabs --> ToolsTab[Tools Tab]
+        
+        UI --> Transport[Transport Controls]
+        Transport --> PlayBtn[Play/Stop]
+        Transport --> PrevBtn[Previous]
+        Transport --> NextBtn[Next]
+        
+        UI --> Tools[Tools Panel]
+        Tools --> SampleGen[Sample Generator]
+        Tools --> DebugConsole[Debug Console]
+        Tools --> Settings[Settings]
     end
 
     %% Audio Chain
@@ -76,11 +86,11 @@ graph TD
 
     %% Components
     classDef component fill:#bbf,stroke:#333,stroke-width:2px
-    class UI,SM,AM,Scene component
+    class UI,SM,AM,Scene,Tabs,Transport,Tools component
 
     %% Audio
     classDef audio fill:#bfb,stroke:#333,stroke-width:2px
-    class BAM,EAM,AB,WebAudio audio
+    class BAM,EAM,AB,WebAudio,Context,Gain,Comp,Dest audio
 
     %% Error Handling
     classDef error fill:#fbb,stroke:#333,stroke-width:2px
@@ -89,3 +99,11 @@ graph TD
     %% Initialization
     classDef init fill:#ffb,stroke:#333,stroke-width:2px
     class ModuleLoad,SceneManagerInit,UIInit,SceneInit,AudioInit init
+
+    %% UI Elements
+    classDef ui fill:#ddf,stroke:#333,stroke-width:2px
+    class ScenesTab,ControlsTab,ToolsTab,PlayBtn,PrevBtn,NextBtn,SampleGen,DebugConsole,Settings ui
+
+    %% Construction Notice
+    classDef notice fill:#ffd,stroke:#333,stroke-width:2px
+    class Construction notice

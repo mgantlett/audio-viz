@@ -1,6 +1,6 @@
 # Audio Visualization and Music Creation System
 
-A modern take on the demoscene tradition, combining a music tracker interface with real-time visualizations. This project creates an immersive audio-visual experience where music and graphics are tightly integrated, featuring both pre-programmed sequences and real-time interactive elements.  This app runs on http://localhost:8000/
+A modern take on the demoscene tradition, combining a music tracker interface with real-time visualizations. This project creates an immersive audio-visual experience where music and graphics are tightly integrated, featuring both pre-programmed sequences and real-time interactive elements. The app is hosted at https://mgantlett.github.io/audio-viz/
 
 ## Core Components
 
@@ -58,29 +58,55 @@ A modern take on the demoscene tradition, combining a music tracker interface wi
 
 ### 3. User Interface
 
-#### Tracker Interface
-- **Modern Music Editor**
-  - Pattern grid display
-  - Transport controls
-  - Sample browser
-  - Effect parameters
-  - Real-time feedback
+#### Modern Design System
+- **Tailwind Integration**
+  - Utility-first CSS framework
+  - Custom color scheme
+  - Responsive layouts
+  - Dark mode optimized
+  - Consistent spacing system
 
-#### Control System
-- **Interactive Controls**
-  - Scene selection
-  - Pattern editing
-  - Sample management
-  - Visual parameters
-  - Performance settings
+#### Custom UI Components
+- **Enhanced Navigation**
+  - Tab-based interface
+  - Smooth transitions
+  - Active state indicators
+  - Icon-based navigation
+  - Keyboard shortcuts
 
-#### Keyboard Integration
-- **Efficient Input System**
-  - Note input (Z-M keys)
-  - Octave control
-  - Pattern navigation
-  - Transport shortcuts
-  - Scene switching
+#### Interactive Controls
+- **Scene Selection**
+  - Visual scene previews
+  - Smooth transitions
+  - Active state feedback
+  - Scene-specific controls
+  - Development status indicators
+
+#### Error Handling
+- **Robust Error Management**
+  - Visual error feedback
+  - Console logging
+  - State recovery
+  - User-friendly messages
+  - Development mode details
+
+#### Tools Integration
+- **Developer Tools**
+  - Sample generator
+  - Debug console (coming soon)
+  - Settings panel (coming soon)
+  - Performance monitoring
+  - State inspection
+
+#### Progressive Enhancement
+- **Feature Status**
+  - Clear feature availability
+  - Under construction notices
+  - Feature previews
+  - Development roadmap
+  - User feedback collection
+
+[Rest of the content remains the same...]
 
 ## Technical Architecture
 
@@ -106,6 +132,12 @@ A modern take on the demoscene tradition, combining a music tracker interface wi
   - State management
   - Resource management
   - Error handling
+  - **Module Loading Order**
+    - SceneManager initialization
+    - UI component setup
+    - Audio system bootstrap
+    - Scene initialization
+    - Tool registration
 
 ### 3. Performance Optimization
 - **Real-time Processing**

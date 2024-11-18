@@ -82,7 +82,7 @@ The project follows a modular architecture with clear separation of concerns:
   - UI Components
   - Tool Integration
 
-For detailed architecture information, see [audio-components.md](audio-components.md).
+For a detailed overview of the system architecture and component interactions, see the [Component Overview](audio-components.md#component-overview) documentation.
 
 ## Development
 

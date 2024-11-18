@@ -3,6 +3,7 @@ import Scene from './core/Scene.js';
 import { StickFiguresScene } from './scenes/stickFigures.js';
 import { ParticleWaveScene } from './scenes/particleWave.js';
 import { BeatScene } from './scenes/beatScene.js';
+import './core/sceneManager.js';  // Import SceneManager to ensure it's loaded
 
 // Create p5 instance
 const sketch = (p) => {
@@ -18,6 +19,11 @@ const sketch = (p) => {
 
         // Initialize scenes first
         try {
+            // Wait for SceneManager to be available
+            if (!window.sceneManager) {
+                throw new Error('SceneManager not initialized');
+            }
+
             // Register scenes
             window.sceneManager.registerScene('scene1', new StickFiguresScene());
             window.sceneManager.registerScene('scene2', new ParticleWaveScene());
@@ -37,6 +43,11 @@ const sketch = (p) => {
         try {
             // Clear background
             p.background(0);
+
+            // Safely check for sceneManager
+            if (!window.sceneManager) {
+                throw new Error('SceneManager not initialized');
+            }
 
             const audioInitialized = audioManager.isInitialized();
             const isEnhancedMode = window.sceneManager.isEnhancedMode;
@@ -92,7 +103,9 @@ const sketch = (p) => {
     p.windowResized = function() {
         try {
             p.resizeCanvas(p.windowWidth, p.windowHeight);
-            window.sceneManager.windowResized();
+            if (window.sceneManager) {
+                window.sceneManager.windowResized();
+            }
         } catch (error) {
             console.error('Error handling window resize:', error);
         }

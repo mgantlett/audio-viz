@@ -1,6 +1,6 @@
-need to be refactored and the files are too big
+we need to make the menu closeable by mouse button
+i want i cool way to toggle the menu (same as m on keyboard ) but with a mouse press of something on the screeen
 
-C:\Users\mgant\Desktop\audio-viz\index.html
-C:\Users\mgant\Desktop\audio-viz\controls\ui.js
-read this for project context C:\Users\mgant\Desktop\audio-viz\init-prompt.md
-, C:\Users\mgant\Desktop\audio-viz\audio-components.md
+
+for more context read: project-init-prompt.md
+

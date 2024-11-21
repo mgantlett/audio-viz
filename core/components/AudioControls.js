@@ -43,9 +43,27 @@ export class AudioControls {
                 try {
                     if (!audioController.isAudioInitialized()) {
                         const mode = audioController.isEnhancedMode ? 'enhanced' : 'basic';
+                        // Set up one-time listener for initialization completion
+                        const initPromise = new Promise((resolve, reject) => {
+                            const initHandler = (data) => {
+                                if (data.success) {
+                                    resolve();
+                                } else {
+                                    reject(new Error('Audio initialization failed'));
+                                }
+                                this.eventBus.off('audio:initialized', initHandler);
+                            };
+                            this.eventBus.on('audio:initialized', initHandler);
+                        });
+
+                        // Emit initialization event
                         this.eventBus.emit('audio:initialize', mode);
+
+                        // Wait for initialization to complete
+                        await initPromise;
                     }
 
+                    // Start audio after initialization is complete
                     this.eventBus.emit('audio:start');
                 } catch (error) {
                     console.error('Error during audio start:', error);

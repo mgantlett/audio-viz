@@ -8,18 +8,80 @@ export class AudioControls {
         this.isProcessingTempoChange = false;
         this.eventBus = EventBus.getInstance();
         this.updateInterval = null;
+        this.elements = {
+            startButton: null,
+            stopButton: null
+        };
     }
 
     initialize() {
         if (this.initialized) return;
         console.log('Initializing AudioControls...');
         
+        this.cacheElements();
+        this.setupEventListeners();
         this.setupTempoControl();
         this.setupPatternShortcuts();
         this.startControlUpdates();
         
         this.initialized = true;
         console.log('AudioControls initialized successfully');
+    }
+
+    cacheElements() {
+        this.elements.startButton = document.getElementById('startButton');
+        this.elements.stopButton = document.getElementById('stopButton');
+    }
+
+    setupEventListeners() {
+        // Start button click handler
+        if (this.elements.startButton) {
+            this.elements.startButton.addEventListener('click', async () => {
+                console.log('Start button clicked');
+                this.elements.startButton.disabled = true;
+                
+                try {
+                    if (!audioController.isAudioInitialized()) {
+                        const mode = audioController.isEnhancedMode ? 'enhanced' : 'basic';
+                        this.eventBus.emit('audio:initialize', mode);
+                    }
+
+                    this.eventBus.emit('audio:start');
+                } catch (error) {
+                    console.error('Error during audio start:', error);
+                    this.elements.startButton.disabled = false;
+                }
+            });
+        }
+
+        // Stop button click handler
+        if (this.elements.stopButton) {
+            this.elements.stopButton.addEventListener('click', () => {
+                console.log('Stop button clicked');
+                this.eventBus.emit('audio:stop');
+            });
+        }
+
+        // Listen for audio state changes
+        this.eventBus.on('audio:started', () => {
+            this.elements.startButton?.classList.add('hidden');
+            this.elements.stopButton?.classList.remove('hidden');
+        });
+
+        this.eventBus.on('audio:stopped', () => {
+            this.elements.stopButton?.classList.add('hidden');
+            this.elements.startButton?.classList.remove('hidden');
+            if (this.elements.startButton) {
+                this.elements.startButton.disabled = false;
+            }
+        });
+
+        this.eventBus.on('audio:error', (error) => {
+            console.error('Audio error:', error);
+            if (this.elements.startButton) {
+                this.elements.startButton.disabled = false;
+            }
+        });
     }
 
     setupTempoControl() {

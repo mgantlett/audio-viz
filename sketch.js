@@ -29,9 +29,24 @@ const sketch = (p) => {
             window.sceneManager.registerScene('scene2', new ParticleWaveScene());
             window.sceneManager.registerScene('scene3', new BeatScene());
             
-            // Then initialize managers
-            window.uiManager.initialize();
+            // Initialize scene manager first
             window.sceneManager.initialize();
+
+            // Check if uiManager is available
+            if (!window.uiManager) {
+                console.warn('UIManager not initialized, waiting...');
+                // Give it a moment to initialize
+                setTimeout(() => {
+                    if (window.uiManager) {
+                        window.uiManager.initialize();
+                        console.log('UIManager initialized after delay');
+                    } else {
+                        console.error('UIManager still not available after delay');
+                    }
+                }, 100);
+            } else {
+                window.uiManager.initialize();
+            }
             
             console.log('Managers initialized successfully');
         } catch (error) {

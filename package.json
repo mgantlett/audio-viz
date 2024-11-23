@@ -1,0 +1,62 @@
+{
+  "name": "audio-viz",
+  "version": "1.0.0",
+  "description": "Audio visualization application",
+  "type": "module",
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "dev:vite": "vite",
+    "dev:python": "python server.py",
+    "dev": "concurrently \"npm run dev:python\" \"npm run dev:vite\"",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext ts,tsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "clean": "rimraf dist",
+    "migrate": "node scripts/migrate-project.js",
+    "migrate:single": "node scripts/migrate-to-ts.js",
+    "start": "npm run dev",
+    "validate": "npm run type-check && npm run lint",
+    "prepare": "npm run setup",
+    "test:types": "tsc --noEmit",
+    "test:lint": "eslint src --ext ts,tsx --max-warnings 0",
+    "postinstall": "npm run setup",
+    "stop": "powershell -Command \"Stop-Process -Name 'node' -Force -ErrorAction SilentlyContinue; Stop-Process -Name 'python' -Force -ErrorAction SilentlyContinue\"",
+    "restart": "npm run stop && npm start"
+  },
+  "dependencies": {
+    "p5": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/p5": "^1.4.0",
+    "@typescript-eslint/eslint-plugin": "^6.12.0",
+    "@typescript-eslint/parser": "^6.12.0",
+    "autoprefixer": "^10.4.16",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.54.0",
+    "postcss": "^8.4.31",
+    "prettier": "^3.1.0",
+    "rimraf": "^5.0.5",
+    "tailwindcss": "^3.3.5",
+    "typescript": "^5.3.2",
+    "vite": "^5.0.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
+}

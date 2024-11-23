@@ -1,53 +1,23 @@
 import { AudioBase } from './AudioBase';
-import type { 
-    AudioMetrics,
-    Sample,
-    SampleManager,
-    TrackerSequencer,
-    TrackerState,
-    ImportedModules
-} from '../../types/audio';
+import type { GeneratedPattern } from './MagentaPatternGenerator';
+import type { AudioMetrics } from '../../types/audio';
 import type { AudioMode } from '../../types/scene';
 
-// Dynamic imports for modules that haven't been converted to TypeScript yet
-const importDeps = async (): Promise<ImportedModules> => {
-    const { SampleManager } = await import('./SampleManager');
-    const { TrackerPattern } = await import('./TrackerPattern');
-    const { TrackerSequencer } = await import('./TrackerSequencer');
-    
-    return {
-        SampleManager,
-        TrackerPattern,
-        TrackerSequencer
-    };
-};
-
 export class EnhancedAudioManager extends AudioBase {
-    private sampleManager: SampleManager | null;
-    private sequencer: TrackerSequencer | null;
+    private currentPattern: GeneratedPattern | null;
     private analyser: AnalyserNode | null;
+    private compressor: DynamicsCompressorNode | null;
     private dataArray: Uint8Array | null;
     private waveformArray: Uint8Array | null;
-    private readonly defaultSamples: Sample[];
-    private TrackerPattern: ImportedModules['TrackerPattern'] | null = null;
 
     constructor() {
         super();
-        this.sampleManager = null;
-        this.sequencer = null;
+        this.currentPattern = null;
         this.analyser = null;
+        this.compressor = null;
         this.dataArray = null;
         this.waveformArray = null;
-        this._currentTempo = 135;
-
-        // Default samples to load
-        this.defaultSamples = [
-            { name: 'kick', url: '/samples/kick.wav', baseNote: 'C3' },
-            { name: 'snare', url: '/samples/snare.wav', baseNote: 'D3' },
-            { name: 'hihat', url: '/samples/hihat.wav', baseNote: 'F#3' },
-            { name: 'bass', url: '/samples/bass.wav', baseNote: 'C2' },
-            { name: 'lead', url: '/samples/lead.wav', baseNote: 'C4' }
-        ];
+        this.setTempo(124); // Set initial tempo for Afro house
     }
 
     override async initializeWithMode(mode: AudioMode = 'tracker'): Promise<boolean> {
@@ -59,48 +29,26 @@ export class EnhancedAudioManager extends AudioBase {
             this.mode = mode;
             console.log(`Initializing audio in ${mode} mode`);
             
-            if (!this.context) {
-                const success = await this.setupAudioContext();
-                if (!success || !this.context) {
-                    throw new Error('Failed to setup audio context');
-                }
+            // Initialize audio context first
+            const success = await this.setupAudioContext();
+            if (!success) {
+                console.log('Waiting for user interaction to initialize audio context');
+                return true; // Return true to allow UI to show initialize button
             }
 
-            // Import dependencies
-            const { SampleManager, TrackerPattern, TrackerSequencer } = await importDeps();
-            this.TrackerPattern = TrackerPattern;
+            if (!this.context || this.context.state !== 'running') {
+                console.log('Audio context not ready');
+                return true; // Return true to allow UI to show initialize button
+            }
 
-            // Setup analyzer
-            console.log('Setting up analyzer...');
+            // Setup analyzer and compressor
+            console.log('Setting up audio nodes...');
             this.analyser = this.context.createAnalyser();
+            this.compressor = this.context.createDynamicsCompressor();
             this.analyser.fftSize = 2048;
             this.analyser.smoothingTimeConstant = 0.85;
             this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
             this.waveformArray = new Uint8Array(this.analyser.frequencyBinCount);
-
-            // Initialize sample manager
-            console.log('Initializing sample manager...');
-            this.sampleManager = new SampleManager(this.context);
-
-            // Load default samples
-            console.log('Loading default samples...');
-            if (!this.sampleManager) {
-                throw new Error('Sample manager not initialized');
-            }
-
-            const sampleLoadResults = await Promise.all(
-                this.defaultSamples.map(sample => 
-                    this.sampleManager?.loadSample(
-                        sample.name,
-                        sample.url,
-                        { baseNote: sample.baseNote }
-                    ) ?? Promise.resolve(false)
-                )
-            );
-
-            if (sampleLoadResults.some((result: boolean) => !result)) {
-                throw new Error('Some samples failed to load');
-            }
 
             // Setup audio chain
             console.log('Setting up audio chain...');
@@ -110,49 +58,17 @@ export class EnhancedAudioManager extends AudioBase {
                 this.compressor.connect(this.context.destination);
             }
 
-            // Initialize sequencer
-            console.log('Initializing sequencer...');
-            this.sequencer = new TrackerSequencer(this.context, this.sampleManager);
-            if (!this.sequencer) {
-                throw new Error('Failed to create sequencer');
-            }
-
-            // Set sequencer audio destination
-            if (this.masterGain && !this.sequencer.setAudioDestination(this.masterGain)) {
-                throw new Error('Failed to set sequencer audio destination');
-            }
-
-            // Create and add default pattern
-            console.log('Creating default pattern...');
-            const defaultPattern = this.createDefaultPattern();
-            if (!defaultPattern || !defaultPattern.data) {
-                throw new Error('Failed to create default pattern');
-            }
-            
-            console.log('Loading default pattern...');
-            if (!this.sequencer.addPattern(0, defaultPattern)) {
-                throw new Error('Failed to add default pattern to sequencer');
-            }
-
-            // Set initial sequence
-            console.log('Setting initial sequence...');
-            if (!this.sequencer.setSequence([0])) {
-                throw new Error('Failed to set initial sequence');
-            }
-
-            // Set initial tempo
-            this.setBPM(this._currentTempo);
-
             this.isStarted = true;
             console.log('Tracker mode initialized successfully');
             return true;
         } catch (error) {
             console.error('Error initializing tracker mode:', error);
+            await this.cleanup();
             return false;
         }
     }
 
-    override start(): void {
+    override async start(): Promise<void> {
         if (!this.isInitialized()) {
             throw new Error('Audio manager not initialized');
         }
@@ -163,21 +79,21 @@ export class EnhancedAudioManager extends AudioBase {
         }
 
         try {
-            if (!this.sequencer) {
-                throw new Error('Sequencer not initialized');
+            // Ensure audio context is running
+            if (this.context?.state === 'suspended') {
+                await this.context.resume();
             }
 
-            console.log('Starting tracker audio playback...');
+            console.log('Starting audio playback...');
             this.isPlaying = true;
-            this.sequencer.start();
         } catch (error) {
-            console.error('Error starting tracker playback:', error);
+            console.error('Error starting audio playback:', error);
             this.isPlaying = false;
             throw error;
         }
     }
 
-    override stop(): void {
+    override async stop(): Promise<void> {
         if (!this.isInitialized()) {
             throw new Error('Audio manager not initialized');
         }
@@ -188,54 +104,46 @@ export class EnhancedAudioManager extends AudioBase {
         }
 
         try {
-            console.log('Stopping tracker audio playback...');
-            if (this.sequencer) {
-                this.sequencer.stop();
-            }
+            console.log('Stopping audio playback...');
             this.isPlaying = false;
         } catch (error) {
-            console.error('Error stopping tracker playback:', error);
+            console.error('Error stopping audio playback:', error);
             throw error;
         }
     }
 
-    override getAudioMetrics(): AudioMetrics {
+    getAudioMetrics(): AudioMetrics {
         try {
             const data = this.getSpectralData();
-            const state = this.sequencer?.getCurrentState() || {} as TrackerState;
-            const pattern = this.getCurrentPattern();
             
             // Calculate frequency band intensities
             const bassIntensity = data.slice(0, 10).reduce((a, b) => a + b, 0) / 2550;
             const midIntensity = data.slice(10, 100).reduce((a, b) => a + b, 0) / 22950;
             const highIntensity = data.slice(100, 200).reduce((a, b) => a + b, 0) / 25500;
 
-            // Get sample list and map to names only
-            const sampleList = this.sampleManager?.listSamples().map(s => s.name) || [];
-
             return {
-                pattern: pattern || (this.TrackerPattern ? new this.TrackerPattern(64, 8) : null), 
-                currentPattern: state.currentPattern || 0,
-                currentRow: state.currentRow || 0,
+                pattern: this.currentPattern || null,
+                currentPattern: 0,
+                currentRow: 0,
                 isPlaying: this.isPlaying,
-                bpm: state.bpm || this._currentTempo,
+                bpm: this.currentTempo,
                 bassIntensity: bassIntensity.toFixed(3),
                 midIntensity: midIntensity.toFixed(3),
                 highIntensity: highIntensity.toFixed(3),
                 waveform: this.getWaveform(),
-                samples: sampleList,
-                rows: pattern ? pattern.rows : 64,
-                channels: pattern ? pattern.channels : 8,
-                sequence: state.sequence || [0]
+                samples: [],
+                rows: 64,
+                channels: 8,
+                sequence: [0]
             };
         } catch (error) {
             console.warn('Error getting audio metrics:', error);
             return {
-                pattern: this.TrackerPattern ? new this.TrackerPattern(64, 8) : null,
+                pattern: null,
                 currentPattern: 0,
                 currentRow: 0,
                 isPlaying: false,
-                bpm: this._currentTempo,
+                bpm: this.currentTempo,
                 bassIntensity: '0.000',
                 midIntensity: '0.000',
                 highIntensity: '0.000',
@@ -248,7 +156,7 @@ export class EnhancedAudioManager extends AudioBase {
         }
     }
 
-    override getSpectralData(): Uint8Array {
+    getSpectralData(): Uint8Array {
         try {
             if (!this.analyser || !this.dataArray) return new Uint8Array(1024);
             this.analyser.getByteFrequencyData(this.dataArray);
@@ -259,7 +167,7 @@ export class EnhancedAudioManager extends AudioBase {
         }
     }
 
-    override getWaveform(): Float32Array {
+    getWaveform(): Float32Array {
         try {
             if (!this.analyser || !this.waveformArray) return new Float32Array(1024);
             this.analyser.getByteTimeDomainData(this.waveformArray);
@@ -270,33 +178,25 @@ export class EnhancedAudioManager extends AudioBase {
         }
     }
 
-    override getCurrentPattern(): any | null {
-        try {
-            if (!this.sequencer) return null;
-            const state = this.sequencer.getCurrentState();
-            const patternNumber = state.sequence[state.currentPattern];
-            return this.sequencer.patterns.get(patternNumber);
-        } catch (error) {
-            console.error('Error getting current pattern:', error);
-            return null;
-        }
+    getCurrentPattern(): GeneratedPattern | null {
+        return this.currentPattern;
     }
 
     override async cleanup(closeContext: boolean = true): Promise<void> {
         try {
-            this.stop();
+            await this.stop();
             
-            if (this.sequencer) {
-                this.sequencer.cleanup();
-                this.sequencer = null;
-            }
             if (this.analyser) {
                 this.analyser.disconnect();
                 this.analyser = null;
             }
+            if (this.compressor) {
+                this.compressor.disconnect();
+                this.compressor = null;
+            }
             this.dataArray = null;
             this.waveformArray = null;
-            this.sampleManager = null;
+            this.currentPattern = null;
 
             await super.cleanup(closeContext);
         } catch (error) {
@@ -304,75 +204,18 @@ export class EnhancedAudioManager extends AudioBase {
         }
     }
 
-    setBPM(bpm: number): boolean {
-        try {
-            if (!this.isInitialized()) {
-                throw new Error('Audio manager not initialized');
+    setPattern(pattern: GeneratedPattern | string): void {
+        if (typeof pattern === 'string') {
+            try {
+                // Try to parse string as JSON if it's a stringified GeneratedPattern
+                const parsedPattern = JSON.parse(pattern) as GeneratedPattern;
+                this.currentPattern = parsedPattern;
+            } catch (error) {
+                console.error('Error parsing pattern string:', error);
+                // Keep current pattern if parsing fails
             }
-            if (this.sequencer) {
-                this._currentTempo = Math.max(60, Math.min(200, bpm));
-                return this.sequencer.setBPM(this._currentTempo);
-            }
-            return false;
-        } catch (error) {
-            console.error('Error setting BPM:', error);
-            return false;
-        }
-    }
-
-    private createDefaultPattern(): any {
-        try {
-            if (!this.TrackerPattern) {
-                throw new Error('TrackerPattern class not initialized');
-            }
-
-            console.log('Creating default pattern...');
-            const pattern = new this.TrackerPattern(64, 8);
-            if (!pattern.data) {
-                throw new Error('Pattern data not initialized');
-            }
-
-            // Define musical elements
-            const bassline = [
-                // First bar - C
-                { note: 'C2', pos: 0, vel: 64 },   // Strong root
-                { note: 'C3', pos: 4, vel: 48 },   // Octave up
-                { note: 'G2', pos: 8, vel: 56 },   // Fifth
-                { note: 'E2', pos: 12, vel: 48 },  // Third
-                
-                // Second bar - G
-                { note: 'G2', pos: 16, vel: 64 },  // Strong root
-                { note: 'D3', pos: 20, vel: 48 },  // Fifth up
-                { note: 'B2', pos: 24, vel: 56 },  // Third
-                { note: 'G2', pos: 28, vel: 48 },  // Root again
-                
-                // Third bar - Am
-                { note: 'A2', pos: 32, vel: 64 },  // Strong root
-                { note: 'E3', pos: 36, vel: 48 },  // Fifth up
-                { note: 'C3', pos: 40, vel: 56 },  // Minor third
-                { note: 'A2', pos: 44, vel: 48 },  // Root again
-                
-                // Fourth bar - F
-                { note: 'F2', pos: 48, vel: 64 },  // Strong root
-                { note: 'C3', pos: 52, vel: 48 },  // Fifth up
-                { note: 'A2', pos: 56, vel: 56 },  // Third
-                { note: 'F2', pos: 60, vel: 48 }   // Root again
-            ];
-
-            // Create the pattern
-            for (let i = 0; i < 64; i++) {
-                // Bass line
-                const bassNote = bassline.find(note => note.pos === i);
-                if (bassNote) {
-                    pattern.setNote(i, 3, bassNote.note, 'bass', bassNote.vel);
-                }
-            }
-
-            console.log('Default pattern created successfully');
-            return pattern;
-        } catch (error) {
-            console.error('Error creating default pattern:', error);
-            return this.TrackerPattern ? new this.TrackerPattern(64, 8) : null;
+        } else {
+            this.currentPattern = pattern;
         }
     }
 }

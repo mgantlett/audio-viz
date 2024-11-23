@@ -11,7 +11,8 @@ sequenceDiagram
     participant UI as AudioControls
     participant EB as EventBus
     participant AM as AudioManager
-    participant BM as BasicAudioManager
+    participant EM as EnhancedAudioManager
+    participant MG as MagentaGenerator
     participant AC as AudioContext
 
     Note over UI,AC: Error Handling Flow
@@ -20,43 +21,61 @@ sequenceDiagram
         Note right of UI: Initialization Errors
         UI->>AM: handleStart()
         activate AM
-        AM->>BM: initializeWithMode()
-        activate BM
-        BM->>AC: setupAudioContext()
+        AM->>EM: initializeWithMode('tracker')
+        activate EM
+        EM->>AC: setupAudioContext()
         alt Context Creation Failed
-            AC-->>BM: Error
-            BM-->>AM: false
+            AC-->>EM: Error
+            EM-->>AM: false
             AM->>EB: emit('audio:error')
             EB->>UI: on('audio:error')
             Note right of UI: Reset UI State
         else Context Suspended
-            AC-->>BM: suspended
-            BM-->>AM: true
+            AC-->>EM: suspended
+            EM-->>AM: true
             AM->>EB: emit('audio:initialized')
             EB->>UI: Update button to 'Start'
         end
-        deactivate BM
+        deactivate EM
         deactivate AM
     end
 
     rect rgb(240, 240, 240)
-        Note right of UI: Playback Errors
+        Note right of UI: Pattern Generation Errors
         UI->>EB: emit('audio:start')
         EB->>AM: on('audio:start')
         activate AM
-        AM->>BM: start()
-        activate BM
-        alt Node Creation Failed
-            BM-->>AM: Error
-            AM->>EB: emit('audio:error')
-            EB->>UI: on('audio:error')
-            Note right of UI: Show Error State
-        else Node Connection Failed
-            BM-->>AM: Error
-            AM->>EB: emit('audio:error')
-            EB->>UI: Reset Controls
+        AM->>MG: initialize()
+        alt Model Loading Failed
+            MG-->>AM: Error
+            AM->>MG: createBasicPattern()
+            MG-->>AM: fallback pattern
+            AM->>EB: emit('beat:error')
+            EB->>UI: Show fallback message
+        else Pattern Generation Failed
+            MG-->>AM: Error
+            AM->>MG: createBasicPattern()
+            MG-->>AM: fallback pattern
+            AM->>EB: emit('beat:error')
+            EB->>UI: Show fallback message
         end
-        deactivate BM
+        deactivate AM
+    end
+
+    rect rgb(240, 240, 240)
+        Note right of UI: Audio Analysis Errors
+        UI->>AM: getAudioMetrics()
+        activate AM
+        AM->>EM: getAudioMetrics()
+        alt Analyzer Error
+            EM-->>AM: Error
+            AM-->>UI: Return default metrics
+            Note right of UI: Continue with defaults
+        else Buffer Error
+            EM-->>AM: Error
+            AM-->>UI: Return empty buffer
+            Note right of UI: Skip visualization frame
+        end
         deactivate AM
     end
 
@@ -65,16 +84,16 @@ sequenceDiagram
         UI->>EB: emit('audio:stop')
         EB->>AM: on('audio:stop')
         activate AM
-        AM->>BM: stop()
-        activate BM
+        AM->>EM: stop()
+        activate EM
         alt Cleanup Failed
-            BM-->>AM: Error
-            AM->>BM: cleanup(true)
-            BM-->>AM: success
+            EM-->>AM: Error
+            AM->>EM: cleanup(true)
+            EM-->>AM: success
             AM->>EB: emit('audio:stopped')
             EB->>UI: Force UI Reset
         end
-        deactivate BM
+        deactivate EM
         deactivate AM
     end
 ```
@@ -90,13 +109,18 @@ stateDiagram-v2
     state Normal {
         [*] --> Ready
         Ready --> Initializing
-        Initializing --> Playing
+        Initializing --> LoadingModels
+        LoadingModels --> GeneratingPattern
+        GeneratingPattern --> Playing
         Playing --> Stopping
         Stopping --> Ready
     }
     
     state "Error States" as ES {
         InitError
+        ModelError
+        PatternError
+        AnalyzerError
         PlaybackError
         StopError
         CleanupError
@@ -104,6 +128,9 @@ stateDiagram-v2
     
     state "Recovery Actions" as RA {
         ResetUI
+        LoadFallbackModel
+        UseBasicPattern
+        UseDefaultMetrics
         CleanupNodes
         ResetContext
         ForceStop
@@ -114,6 +141,9 @@ stateDiagram-v2
     RA --> Normal: Recovery Complete
 
     InitError --> ResetUI
+    ModelError --> LoadFallbackModel
+    PatternError --> UseBasicPattern
+    AnalyzerError --> UseDefaultMetrics
     PlaybackError --> CleanupNodes
     StopError --> ForceStop
     CleanupError --> ResetContext
@@ -127,7 +157,10 @@ This diagram shows how errors are processed through the system:
 graph TB
     subgraph ErrorTypes
         IE[Initialization Error]
-        PE[Playback Error]
+        ME[Model Loading Error]
+        PE[Pattern Generation Error]
+        AE[Analysis Error]
+        BE[Buffer Error]
         SE[Stop Error]
         CE[Cleanup Error]
     end
@@ -144,16 +177,22 @@ graph TB
         RC[Reset Controls]
         RN[Reset Nodes]
         RA[Reset Audio Context]
+        RP[Reset Pattern]
+        RM[Reset Models]
     end
 
     subgraph UserFeedback
         UE[UI Error State]
         UM[User Message]
         UB[Button Update]
+        UV[Visual Feedback]
     end
 
     IE -->|triggers| ED
+    ME -->|triggers| ED
     PE -->|triggers| ED
+    AE -->|triggers| ED
+    BE -->|triggers| ED
     SE -->|triggers| ED
     CE -->|triggers| ED
 
@@ -165,10 +204,13 @@ graph TB
     ER -->|updates| RC
     ER -->|cleans| RN
     ER -->|resets| RA
+    ER -->|resets| RP
+    ER -->|resets| RM
 
     EH -->|shows| UE
     UE -->|displays| UM
     UE -->|updates| UB
+    UE -->|updates| UV
 
     RS -->|confirms| UB
     RC -->|validates| UB
@@ -182,19 +224,37 @@ graph TB
    - Resource allocation failures
    - Permission denied errors
 
-2. Playback Errors
+2. Model Errors
+   - Model loading failures
+   - Initialization failures
+   - Network errors
+   - Memory limitations
+
+3. Pattern Generation Errors
+   - Invalid pitch range
+   - Generation timeout
+   - Model output errors
+   - Processing failures
+
+4. Analysis Errors
+   - Analyzer node failures
+   - Buffer errors
+   - Processing errors
+   - Data conversion errors
+
+5. Playback Errors
    - Node creation failures
    - Connection failures
    - State transition errors
    - Resource exhaustion
 
-3. Stop Errors
+6. Stop Errors
    - Cleanup failures
    - State reset failures
    - Resource release errors
    - Context closure errors
 
-4. Resource Errors
+7. Resource Errors
    - Memory allocation failures
    - Connection limits reached
    - Buffer overflows
@@ -207,23 +267,31 @@ graph TB
    - Validate state changes
    - Check resource availability
    - Verify connections
+   - Validate patterns
+   - Check model states
 
 2. Response
    - Emit appropriate error event
    - Log error details
    - Update UI state
    - Initiate recovery
+   - Use fallback patterns
+   - Switch to basic mode
 
 3. Recovery
    - Reset system state
    - Clean up resources
    - Restore UI controls
    - Re-initialize if needed
+   - Load fallback models
+   - Use basic patterns
 
 4. Prevention
    - State validation
    - Resource checks
    - Connection verification
+   - Pattern validation
+   - Model pre-loading
    - Error boundaries
 
 ## Best Practices
@@ -233,15 +301,21 @@ graph TB
    - Provide user feedback
    - Log error details
    - Maintain state consistency
+   - Use fallback patterns
+   - Handle model errors gracefully
 
 2. Recovery
    - Graceful degradation
    - State restoration
    - Resource cleanup
    - User notification
+   - Pattern fallbacks
+   - Model reinitialization
 
 3. Prevention
    - Input validation
    - State checks
    - Resource monitoring
    - Connection verification
+   - Pattern validation
+   - Model state tracking

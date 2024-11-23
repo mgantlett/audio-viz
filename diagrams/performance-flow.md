@@ -9,6 +9,8 @@ The following diagram shows the critical path for performance optimization:
 ```mermaid
 graph TB
     subgraph Performance Critical Path
+        ML[Model Loading]
+        PG[Pattern Generation]
         AF[Audio Frame]
         AD[Audio Data]
         VP[Video Processing]
@@ -21,6 +23,13 @@ graph TB
             AB[Audio Buffer]
             AN[Audio Analysis]
             AC[Audio Caching]
+            PC[Pattern Caching]
+        end
+
+        subgraph Model Pipeline
+            MP[Model Preloading]
+            MC[Model Caching]
+            PO[Pattern Optimization]
         end
 
         subgraph Video Pipeline
@@ -33,6 +42,7 @@ graph TB
             TP[Texture Pooling]
             BP[Buffer Pooling]
             GC[Garbage Collection]
+            MM[Model Memory]
         end
     end
 
@@ -41,16 +51,24 @@ graph TB
         CPU[CPU Usage]
         GPU[GPU Usage]
         MEM[Memory Usage]
+        LAT[Pattern Latency]
     end
 
+    ML -->|Load| PG
+    PG -->|Generate| AF
     AF -->|Process| AD
     AD -->|Analyze| AN
     AN -->|Update| VP
     VP -->|Render| VR
     VR -->|Display| DS
 
+    MP -->|Optimize| ML
+    MC -->|Cache| PG
+    PO -->|Optimize| AF
+    
     AB -->|Optimize| AN
     AC -->|Cache| AD
+    PC -->|Cache| PG
     
     VB -->|Optimize| VP
     VS -->|Optimize| VR
@@ -59,11 +77,13 @@ graph TB
     TP -->|Manage| VP
     BP -->|Manage| VR
     GC -->|Control| MEM
+    MM -->|Manage| ML
 
     FPS -->|Monitor| VR
     CPU -->|Monitor| AN
     GPU -->|Monitor| VR
     MEM -->|Monitor| GC
+    LAT -->|Monitor| PG
 ```
 
 ## Performance Optimization Flow
@@ -73,12 +93,25 @@ This diagram shows how performance is monitored and optimized:
 ```mermaid
 sequenceDiagram
     participant RT as RenderTimer
+    participant ML as ModelLoader
+    participant PG as PatternGenerator
     participant AP as AudioProcessor
     participant VP as VideoProcessor
     participant GL as WebGL
     participant RAF as RequestAnimationFrame
 
     Note over RT,RAF: Performance Optimization Flow
+
+    rect rgb(240, 240, 240)
+        Note right of RT: Model and Pattern Flow
+        ML->>ML: preloadModels()
+        ML-->>PG: modelsReady
+        loop Pattern Generation
+            PG->>PG: generatePattern()
+            PG-->>AP: newPattern
+            AP->>AP: processPattern()
+        end
+    end
 
     rect rgb(240, 240, 240)
         Note right of RT: Frame Timing
@@ -99,6 +132,8 @@ sequenceDiagram
         Note right of RT: Performance Monitoring
         loop Every Second
             RT->>RT: calculateFPS()
+            RT->>ML: checkModelMemory()
+            RT->>PG: checkPatternLatency()
             RT->>AP: checkAudioLatency()
             RT->>VP: checkGPULoad()
             RT->>RT: adjustQuality()
@@ -119,18 +154,21 @@ stateDiagram-v2
             HighQuality
             FullFeatures
             MaxFPS
+            ComplexPatterns
         }
 
         state Degraded {
             ReducedQuality
             LimitedFeatures
             OptimizedFPS
+            SimplePatterns
         }
 
         state Critical {
             MinimalQuality
             BasicFeatures
             StableFPS
+            BasicPatterns
         }
     }
 
@@ -139,6 +177,8 @@ stateDiagram-v2
         ShaderComplexity
         TextureResolution
         EffectIntensity
+        PatternComplexity
+        AnalysisResolution
     }
 
     Normal --> Degraded: Performance Drop
@@ -160,12 +200,20 @@ graph TB
     subgraph Performance Metrics
         FPS[Frame Rate]
         LAT[Audio Latency]
+        PAT[Pattern Latency]
         CPU[CPU Usage]
         GPU[GPU Usage]
         MEM[Memory Usage]
+        MOD[Model Memory]
     end
 
     subgraph Optimization Strategies
+        subgraph Models
+            MP[Model Preloading]
+            MC[Model Caching]
+            PC[Pattern Caching]
+        end
+
         subgraph Audio
             AB[Buffer Size]
             AN[Analysis Rate]
@@ -189,13 +237,20 @@ graph TB
     FPS -->|Affects| TR
     LAT -->|Affects| AB
     LAT -->|Affects| AN
+    PAT -->|Affects| PC
+    PAT -->|Affects| MC
     CPU -->|Affects| WK
     CPU -->|Affects| GC
     GPU -->|Affects| VB
     GPU -->|Affects| VS
     MEM -->|Affects| AC
     MEM -->|Affects| BP
+    MOD -->|Affects| MP
+    MOD -->|Affects| MC
 
+    MP -->|Optimizes| PAT
+    MC -->|Optimizes| MOD
+    PC -->|Optimizes| PAT
     AB -->|Optimizes| LAT
     AN -->|Optimizes| CPU
     AC -->|Optimizes| MEM
@@ -209,49 +264,67 @@ graph TB
 
 ## Key Performance Areas
 
-1. Frame Timing
+1. Model and Pattern Performance
+   - Model loading optimization
+   - Pattern generation efficiency
+   - Pattern caching strategy
+   - Memory management for models
+
+2. Frame Timing
    - Maintain consistent frame rate
    - Minimize audio-visual latency
    - Optimize render loop
    - Balance quality vs performance
 
-2. Resource Management
+3. Resource Management
    - Efficient buffer usage
    - Texture pooling
    - Memory management
    - Garbage collection timing
+   - Model memory handling
 
-3. Quality Adjustments
+4. Quality Adjustments
    - Dynamic quality scaling
    - Feature toggling
    - Resolution adjustment
    - Effect intensity control
+   - Pattern complexity control
 
-4. Monitoring
+5. Monitoring
    - Frame rate tracking
    - Audio latency
+   - Pattern generation latency
    - CPU/GPU usage
    - Memory consumption
+   - Model memory usage
 
 ## Optimization Strategies
 
-1. Audio Pipeline
+1. Model Pipeline
+   - Preload models
+   - Cache model outputs
+   - Optimize pattern generation
+   - Memory-efficient model loading
+
+2. Audio Pipeline
    - Optimize buffer sizes
    - Cache frequency data
    - Batch audio processing
    - Use Web Workers
+   - Pattern caching
 
-2. Video Pipeline
+3. Video Pipeline
    - Batch rendering
    - Shader optimization
    - Texture management
    - GPU memory usage
 
-3. System Resources
+4. System Resources
    - Memory pooling
    - GC optimization
    - Worker distribution
    - Resource cleanup
+   - Model memory management
 
 ## Best Practices
 
@@ -260,21 +333,25 @@ graph TB
    - Threshold monitoring
    - Performance logging
    - User experience tracking
+   - Pattern generation timing
 
 2. Resource Management
    - Proactive optimization
    - Resource pooling
    - Memory defragmentation
    - Cache management
+   - Model lifecycle management
 
 3. Quality Control
    - Adaptive quality settings
    - Progressive enhancement
    - Feature prioritization
    - Performance budgets
+   - Pattern complexity control
 
 4. Optimization Timing
    - Strategic GC timing
    - Frame timing control
    - Resource preloading
    - Async operations
+   - Pattern generation scheduling

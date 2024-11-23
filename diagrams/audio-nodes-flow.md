@@ -2,44 +2,48 @@
 
 This document details the lifecycle of audio nodes, including creation, connection, playback, and cleanup processes.
 
-## Audio Node Setup and Cleanup Flow
+## Enhanced Audio Node Setup and Cleanup Flow
 
-The following diagram shows the complete lifecycle of audio nodes:
+The following diagram shows the complete lifecycle of audio nodes in the enhanced audio system:
 
 ```mermaid
 sequenceDiagram
     participant AC as AudioContext
-    participant ON as OscillatorNode
-    participant GN as GainNode
+    participant AN as AnalyserNode
+    participant CN as CompressorNode
     participant MG as MasterGain
     participant DS as Destination
+    participant PG as PatternGenerator
 
-    Note over AC,DS: Audio Node Setup Flow
+    Note over AC,DS: Enhanced Audio Node Setup Flow
     
-    AC->>ON: createOscillator()
-    AC->>GN: createGain()
-    Note right of GN: Initial gain: 0
+    AC->>AN: createAnalyser()
+    Note right of AN: FFT Size: 2048
+    AC->>CN: createCompressor()
+    Note right of CN: Dynamic compression
     
-    ON->>GN: connect()
-    GN->>MG: connect()
+    AN->>CN: connect()
+    CN->>MG: connect()
     MG->>DS: connect()
     
-    ON->>ON: start()
-    Note right of ON: Oscillator running
+    PG->>PG: generatePattern()
+    Note right of PG: AI pattern generation
     
-    GN->>GN: linearRampToValueAtTime()
-    Note right of GN: Ramp gain up
+    AN->>AN: getByteFrequencyData()
+    Note right of AN: Frequency analysis
+    AN->>AN: getByteTimeDomainData()
+    Note right of AN: Waveform data
 
     Note over AC,DS: Cleanup Flow
     
-    GN->>GN: linearRampToValueAtTime(0)
-    Note right of GN: Ramp down (100ms)
+    MG->>MG: linearRampToValueAtTime(0)
+    Note right of MG: Ramp down (100ms)
     
     Note over AC,DS: After ramp down
-    ON->>ON: stop()
-    ON--xGN: disconnect()
-    GN--xMG: disconnect()
-    Note right of ON: Nodes cleaned up
+    AN--xCN: disconnect()
+    CN--xMG: disconnect()
+    MG--xDS: disconnect()
+    Note right of AN: Nodes cleaned up
 ```
 
 ## Node State Transitions
@@ -50,36 +54,40 @@ This diagram illustrates the various states an audio node can be in:
 stateDiagram-v2
     [*] --> Created: Create Nodes
     Created --> Connected: Connect Chain
-    Connected --> Running: Start Oscillator
+    Connected --> PatternLoading: Initialize Magenta
+    PatternLoading --> PatternReady: Pattern Generated
+    PatternReady --> Running: Start Playback
     Running --> RampingUp: Set Initial Gain
     RampingUp --> Playing: Gain Reached
     
     Playing --> RampingDown: Stop Requested
     RampingDown --> Stopping: Gain Zero
-    Stopping --> Cleanup: Stop Oscillator
+    Stopping --> Cleanup: Stop Playback
     Cleanup --> [*]: Disconnect Nodes
 
     state Playing {
         [*] --> Steady
-        Steady --> Adjusting: Volume/Pitch Change
-        Adjusting --> Steady: Change Complete
+        Steady --> GeneratingPattern: New Pattern Requested
+        GeneratingPattern --> Steady: Pattern Ready
+        Steady --> Analyzing: Process Audio
+        Analyzing --> Steady: Update Visuals
     }
 
     state "Node Lifecycle" as NL {
         state "Active Nodes" as AN {
-            OscillatorNode
-            GainNode
+            AnalyserNode
+            CompressorNode
             MasterGain
         }
         state "Connections" as CN {
-            Oscillator_to_Gain
-            Gain_to_Master
+            Analyser_to_Compressor
+            Compressor_to_Master
             Master_to_Destination
         }
     }
 ```
 
-## Audio Node Architecture
+## Enhanced Audio Node Architecture
 
 This diagram shows the relationships between different audio nodes and their parameters:
 
@@ -91,93 +99,128 @@ graph TB
     end
 
     subgraph AudioNodes
-        ON[Oscillator Node]
-        GN[Gain Node]
+        AN[Analyser Node]
+        CN[Compressor Node]
         MG[Master Gain]
         DS[Destination]
     end
 
+    subgraph PatternGeneration
+        PG[Pattern Generator]
+        MV[MusicVAE]
+        MR[MusicRNN]
+    end
+
+    subgraph Analysis
+        FA[Frequency Analysis]
+        WF[Waveform Data]
+        BD[Beat Detection]
+    end
+
     subgraph NodeStates
         CR[Created]
-        CN[Connected]
+        CO[Connected]
+        PR[Pattern Ready]
         RU[Running]
         PL[Playing]
         CL[Cleanup]
     end
 
     subgraph Parameters
-        FR[Frequency]
-        VL[Volume]
+        FS[FFT Size]
+        TH[Threshold]
+        RT[Ratio]
         GP[Gain]
     end
 
-    AC -->|creates| ON
-    AC -->|creates| GN
+    AC -->|creates| AN
+    AC -->|creates| CN
     AC -->|creates| MG
     
-    ON -->|connects to| GN
-    GN -->|connects to| MG
+    AN -->|connects to| CN
+    CN -->|connects to| MG
     MG -->|connects to| DS
     
-    ON -->|state| RU
-    GN -->|state| PL
+    PG -->|generates| MV
+    PG -->|generates| MR
     
-    FR -->|controls| ON
-    VL -->|controls| GN
+    AN -->|provides| FA
+    AN -->|provides| WF
+    FA -->|enables| BD
+    
+    FS -->|controls| AN
+    TH -->|controls| CN
+    RT -->|controls| CN
     GP -->|controls| MG
     
-    CR -->|transition| CN
-    CN -->|transition| RU
+    CR -->|transition| CO
+    CO -->|transition| PR
+    PR -->|transition| RU
     RU -->|transition| PL
     PL -->|transition| CL
 
-    ST -->|affects| ON
-    ST -->|affects| GN
+    ST -->|affects| AN
+    ST -->|affects| CN
     ST -->|affects| MG
 ```
 
 ## Key Concepts
 
-1. Node Setup:
-   - OscillatorNode created with frequency
-   - GainNode created with initial gain of 0
-   - Nodes connected in chain
-   - Oscillator started immediately
-   - Gain ramped up smoothly
+1. Enhanced Node Setup:
+   - AnalyserNode for real-time audio analysis
+   - CompressorNode for dynamic range control
+   - Pattern-based audio generation
+   - Nodes connected in optimized chain
+   - Real-time audio analysis
 
 2. Node Lifecycle:
-   - Created → Connected → Running → Playing
-   - Volume/Pitch adjustments during playback
+   - Created → Connected → Pattern Ready → Running → Playing
+   - Pattern generation and updates during playback
+   - Real-time audio analysis and visualization
    - Proper cleanup sequence on stop
 
-3. Cleanup Process:
+3. Pattern Generation:
+   - AI-powered pattern creation
+   - Drum and melodic pattern synthesis
+   - Pattern processing and playback
+   - Real-time pattern updates
+
+4. Analysis Features:
+   - Frequency analysis
+   - Waveform visualization
+   - Beat detection
+   - Audio metrics calculation
+
+5. Cleanup Process:
    - Ramp down gain to avoid clicks
    - Wait for ramp completion
-   - Stop oscillator
+   - Stop pattern playback
    - Disconnect nodes in reverse order
    - Clear node references
 
-4. State Management:
+6. State Management:
    - Track node states independently
-   - Coordinate state changes
+   - Coordinate pattern generation
    - Handle parameter changes
    - Manage AudioContext state
 
 ## Important Considerations
 
 1. Timing:
-   - Proper sequencing of node creation
+   - Pattern synchronization
+   - Analysis timing
    - Smooth gain transitions
    - Cleanup timing
    - State synchronization
 
 2. Resource Management:
    - Node creation/disposal
-   - Connection management
-   - Memory usage
-   - Context state
+   - Pattern memory management
+   - Connection optimization
+   - Context state handling
 
 3. Error Prevention:
+   - Pattern generation fallbacks
    - State validation
    - Connection verification
    - Parameter bounds checking
@@ -185,6 +228,7 @@ graph TB
 
 4. Performance:
    - Efficient node creation
-   - Optimized connections
-   - Proper cleanup
+   - Optimized pattern processing
+   - Analysis buffer management
    - Resource pooling
+   - Memory optimization

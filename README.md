@@ -1,6 +1,6 @@
 # Audio Visualizer
 
-A TypeScript-based audio visualization application using p5.js for creative visual effects synchronized with audio.
+A TypeScript-based audio visualization application using p5.js and Magenta.js for creative visual effects synchronized with AI-generated music patterns.
 
 ## Project Structure
 
@@ -9,9 +9,10 @@ src/
 ├── core/               # Core application infrastructure
 │   ├── App.ts         # Main application class
 │   ├── audio/         # Audio system components
-│   │   ├── AudioBase.ts        # Base audio system
-│   │   ├── BasicAudioManager.ts # Oscillator-based audio
-│   │   └── EnhancedAudioManager.ts # Advanced audio features
+│   │   ├── AudioBase.ts           # Base audio system
+│   │   ├── BasicAudioManager.ts   # Oscillator-based audio
+│   │   ├── EnhancedAudioManager.ts # Advanced audio features
+│   │   └── MagentaPatternGenerator.ts # AI pattern generation
 │   ├── Component.ts   # Base component class
 │   ├── EventBus.ts    # Event management system
 │   ├── Manager.ts     # Base manager class
@@ -22,6 +23,7 @@ src/
 │   ├── AudioControls.ts # Audio control interface
 │   └── Menu.ts        # Menu system
 ├── scenes/            # Visualization scenes
+│   ├── Beat.ts        # Beat visualization with AI patterns
 │   ├── StickFigures.ts # Example scene implementation
 │   └── index.ts       # Scene registration
 ├── types/             # TypeScript type definitions
@@ -34,18 +36,36 @@ src/
 
 ## Features
 
+- **AI-Powered Audio System**
+  - Magenta.js integration for pattern generation
+  - MusicVAE for drum pattern generation
+  - MusicRNN for melodic pattern generation
+  - Real-time pattern synthesis and playback
+  - Automatic pattern transposition and processing
+
 - **Advanced Audio System**
-  - Dual-mode audio engine (Basic/Enhanced)
-  - Real-time frequency and amplitude control
-  - Built-in audio processing chain with compression and limiting
+  - Multi-mode audio engine (Basic/Enhanced/Tracker)
+  - Real-time frequency and amplitude analysis
+  - Built-in audio processing chain with:
+    - Dynamic compression
+    - Frequency analysis
+    - Waveform visualization
   - Automatic audio context management
   - Graceful error handling and recovery
 
+- **Beat Scene**
+  - AI-generated musical patterns
+  - Dynamic geometric visualizations
+  - Real-time audio reactivity
+  - Particle system with beat synchronization
+  - Waveform ring visualizations
+
 - **Responsive Controls**
   - Keyboard shortcuts for all major functions
-  - Mouse wheel control for volume and pitch
+  - Mouse wheel control for volume and tempo
   - Touch-screen support with gesture controls
   - Visual feedback for all interactions
+  - Pattern generation controls
 
 - **Architecture**
   - TypeScript with strict type checking
@@ -61,13 +81,10 @@ src/
    npm install
    ```
 
-2. Start development servers:
+2. Start development server:
    ```bash
-   npm start
+   npm run dev
    ```
-   This launches:
-   - Python server (port 8000) for audio processing
-   - Vite dev server for TypeScript/frontend
 
 3. Build for production:
    ```bash
@@ -79,16 +96,16 @@ src/
 ### Keyboard Shortcuts
 - **Space**: Start/Stop audio
 - **Arrow Up/Down**: Adjust volume
-- **Arrow Left/Right**: Adjust pitch
+- **G**: Generate new pattern (in Beat scene)
+- **M**: Toggle menu
 - **B**: Basic pattern
 - **S**: Syncopated pattern
 - **C**: Complex pattern
 
 ### Mouse/Touch Controls
-- **Left half**: Volume control
-- **Right half**: Pitch control
-- **Mouse wheel/Touch drag**: Adjust selected control
+- **Mouse wheel**: Adjust tempo (in Beat scene)
 - **Double tap**: Toggle audio
+- **Menu button**: Access scene selection
 
 ## Audio Modes
 
@@ -99,15 +116,41 @@ src/
 - Ideal for basic sound experiments
 
 ### Enhanced Mode (Tracker)
-- Pattern-based sequencing
-- Multiple audio channels
-- BPM control
-- Sample playback support
+- AI-generated musical patterns
+- Multiple audio channels (drums, bass, lead)
+- BPM control with beat detection
+- Real-time audio analysis
+- Pattern variation and generation
+
+### Beat Scene
+- Deep house pattern generation
+- Dynamic pattern transposition
+- Real-time visualization updates
+- Beat-synchronized animations
+- Audio-reactive geometric patterns
+
+## Pattern Generation
+
+The system uses Magenta.js for AI-powered pattern generation:
+
+### Drum Patterns
+- Four-on-the-floor kick patterns
+- Dynamic hi-hat patterns
+- Varied snare placements
+- Pattern variation through MusicVAE
+
+### Melodic Patterns
+- Bass line generation
+- Chord progression synthesis
+- Lead pattern generation
+- Automatic pattern transposition
+- Real-time pattern processing
 
 ## Error Handling
 
 The system includes comprehensive error handling:
 - Audio context state management
+- Pattern generation fallbacks
 - Graceful recovery from audio glitches
 - User feedback for all error states
 - Automatic cleanup of audio resources
@@ -115,6 +158,7 @@ The system includes comprehensive error handling:
 ## Performance Optimization
 
 - Efficient audio node management
+- Smart pattern caching
 - Automatic resource cleanup
 - Debounced control updates
 - Memory leak prevention

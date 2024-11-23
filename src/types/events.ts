@@ -67,6 +67,21 @@ export interface MenuBlurredEvent {
     type: 'menu:blurred';
 }
 
+export interface MenuToggleEvent {
+    type: 'ui:menu:toggle';
+}
+
+// Beat Scene Events
+export interface BeatInitializedEvent {
+    type: 'beat:initialized';
+    success: boolean;
+}
+
+export interface BeatErrorEvent {
+    type: 'beat:error';
+    error: Error;
+}
+
 // Union type of all possible events
 export type AppEvent =
     | AudioInitializeEvent
@@ -83,7 +98,10 @@ export type AppEvent =
     | MenuOpenedEvent
     | MenuClosedEvent
     | MenuFocusedEvent
-    | MenuBlurredEvent;
+    | MenuBlurredEvent
+    | MenuToggleEvent
+    | BeatInitializedEvent
+    | BeatErrorEvent;
 
 // Event handler type
 export type EventHandler<T extends AppEvent> = (event: T) => void;

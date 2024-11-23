@@ -1,59 +1,58 @@
 import type p5 from 'p5';
 import { Scene } from '../core/Scene';
 import { audioManager } from '../core/audio';
-import type { AudioMetrics } from '../types/audio';
+import { MagentaPatternGenerator } from '../core/audio/MagentaPatternGenerator';
 import type {
     Particle,
     WaveformRing,
     GeometricPattern,
-    SampleVisualizer,
-    TrackerEvent,
-    AudioTracker
+    MagentaEvent
 } from '../types/beat-scene';
+import { EventBus } from '../core/EventBus';
+
+export { Beat as default };
 
 export class Beat extends Scene {
-    private tracker: AudioTracker | null;
+    private magentaGenerator: MagentaPatternGenerator | null;
     private particles: Particle[];
     private waveformRings: WaveformRing[];
     private geometricPatterns: GeometricPattern[];
-    private sampleVisualizers: Map<number, SampleVisualizer>;
     private audioInitialized: boolean;
-    private _boundTrackerEventHandler: ((event: TrackerEvent) => void) | null;
-    private AudioTrackerClass: any | null = null;
+    private _boundEventHandler: ((event: MagentaEvent) => void) | null;
     private _isInitialized: boolean = false;
     private lastBeatTime: number = 0;
-    private beatInterval: number = 500; // Default 120 BPM
+    private beatHistory: number[] = [];
+    private lastBeatEnergy: number = 0;
+    private energyHistory: number[] = [];
+    private readonly MAX_HISTORY = 30;
+    private initializationAttempts: number = 0;
+    private readonly MAX_INIT_ATTEMPTS = 3;
+    private eventBus: EventBus;
 
     constructor(p5: p5) {
         super(p5);
-        this.tracker = null;
+        this.magentaGenerator = null;
         this.particles = [];
         this.waveformRings = [];
         this.geometricPatterns = [];
-        this.sampleVisualizers = new Map();
         this.audioInitialized = false;
-        this._boundTrackerEventHandler = null;
+        this._boundEventHandler = null;
+        this.eventBus = EventBus.getInstance();
     }
 
     async setup(): Promise<boolean> {
         try {
             console.log('Initializing beat scene');
 
-            // Import AudioTracker dynamically
-            const AudioTrackerModule = await import('../components/AudioTracker');
-            this.AudioTrackerClass = AudioTrackerModule.default;
-
-            // Initialize core components first
-            await this.initializeCoreComponents();
-
-            // Initialize visual elements after core components are ready
+            // Initialize visual elements first
             this.setupVisualElements();
-
+            
             // Setup event listeners
             this.setupEventListeners();
             
-            console.log('Beat scene initialized successfully');
+            // Mark as partially initialized - waiting for audio
             this._isInitialized = true;
+            console.log('Beat scene base initialization complete');
             return true;
         } catch (error) {
             console.error('Error initializing beat scene:', error);
@@ -62,41 +61,107 @@ export class Beat extends Scene {
         }
     }
 
-    private async initializeCoreComponents(): Promise<void> {
+    private setupEventListeners(): void {
         try {
-            // Initialize audio manager in tracker mode if not already initialized
-            if (!audioManager.isInitialized() || (audioManager as any).mode !== 'tracker') {
-                console.log('Initializing audio for scene: scene3');
-                const success = await audioManager.initializeWithMode('tracker');
-                if (!success) {
-                    throw new Error('Failed to initialize audio manager in tracker mode');
+            console.log('Setting up event listeners...');
+            
+            // Listen for audio initialization events
+            this.eventBus.on('audio:started', async () => {
+                console.log('Audio system started, initializing Magenta...');
+                await this.initializeMagenta();
+            });
+
+            // Setup Magenta event handler
+            const handler = this.handleMagentaEvent.bind(this);
+            window.addEventListener('magenta-event', handler as EventListener);
+            this._boundEventHandler = handler;
+            
+            // Add keyboard event listener for pattern generation
+            window.addEventListener('keydown', (event: KeyboardEvent) => {
+                if (event.key === 'g' || event.key === 'G') {
+                    this.generateNewPattern();
                 }
-
-                // Wait for audio manager to be ready
-                while (!audioManager.isInitialized()) {
-                    console.log('Waiting for audio manager...');
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                }
-            }
-
-            // Initialize tracker
-            if (!this.tracker && this.AudioTrackerClass) {
-                console.log('Initializing audio tracker...');
-                this.tracker = new this.AudioTrackerClass(this.p5);
-                // Wait for tracker initialization
-                await new Promise(resolve => setTimeout(resolve, 200));
-            }
-
-            // Verify tracker initialization
-            if (!this.tracker || !this.tracker.display) {
-                throw new Error('Failed to initialize audio tracker');
-            }
-
-            this.audioInitialized = true;
-            console.log('Core components initialized successfully');
+            });
+            
+            console.log('Event listeners setup complete');
         } catch (error) {
-            console.error('Error initializing core components:', error);
+            console.error('Error setting up event listeners:', error);
             throw error;
+        }
+    }
+
+    private async initializeMagenta(): Promise<void> {
+        try {
+            if (!audioManager.context || audioManager.context.state !== 'running') {
+                throw new Error('Audio context not running');
+            }
+
+            // Initialize Magenta pattern generator
+            console.log('Initializing Magenta pattern generator...');
+            this.magentaGenerator = new MagentaPatternGenerator(120); // Start with default tempo
+            await this.magentaGenerator.initialize();
+
+            // Generate initial pattern after Magenta is ready
+            try {
+                const pattern = await this.magentaGenerator.generateDeepHouse();
+                if (pattern && audioManager.isInitialized()) {
+                    audioManager.setPattern(pattern);
+                    this.audioInitialized = true;
+                    console.log('Initial pattern set successfully');
+                    this.eventBus.emit({ type: 'beat:initialized', success: true });
+                } else {
+                    throw new Error('Failed to set initial pattern');
+                }
+            } catch (error) {
+                console.error('Error generating initial pattern:', error);
+                // Continue initialization with a basic pattern
+                const basicPattern = this.magentaGenerator.getCurrentPattern();
+                if (basicPattern) {
+                    audioManager.setPattern(basicPattern);
+                    this.audioInitialized = true;
+                    console.log('Fallback pattern set successfully');
+                    this.eventBus.emit({ type: 'beat:initialized', success: true });
+                }
+            }
+
+            console.log('Magenta initialization complete');
+        } catch (error) {
+            console.error('Error initializing Magenta:', error);
+            this.eventBus.emit({ type: 'beat:error', error: error as Error });
+            throw error;
+        }
+    }
+
+    private async generateNewPattern(): Promise<void> {
+        if (this.magentaGenerator && this.audioInitialized) {
+            try {
+                const pattern = await this.magentaGenerator.generateDeepHouse();
+                if (pattern && audioManager.isInitialized()) {
+                    audioManager.setPattern(pattern);
+                    console.log('Generated new Deep House pattern');
+                }
+            } catch (error) {
+                console.error('Error generating new pattern:', error);
+                // Use current pattern as fallback
+                const currentPattern = this.magentaGenerator.getCurrentPattern();
+                if (currentPattern) {
+                    audioManager.setPattern(currentPattern);
+                }
+            }
+        }
+    }
+
+    private handleMagentaEvent(event: MagentaEvent): void {
+        if (!this._isInitialized || !this.audioInitialized) return;
+        
+        try {
+            const { type, pattern } = event.detail;
+            
+            if (type === 'pattern_generate' && pattern) {
+                this.createWaveformRing(0);
+            }
+        } catch (error) {
+            console.error('Error handling Magenta event:', error);
         }
     }
 
@@ -109,51 +174,6 @@ export class Beat extends Scene {
         } catch (error) {
             console.error('Error setting up visual elements:', error);
             throw error;
-        }
-    }
-
-    private setupEventListeners(): void {
-        try {
-            console.log('Setting up event listeners...');
-            const handler = this.handleTrackerEvent.bind(this);
-            window.addEventListener('tracker-event', handler as EventListener);
-            this._boundTrackerEventHandler = handler;
-            console.log('Event listeners setup complete');
-        } catch (error) {
-            console.error('Error setting up event listeners:', error);
-            throw error;
-        }
-    }
-
-    private handleTrackerEvent(event: TrackerEvent): void {
-        if (!this._isInitialized || !this.audioInitialized) return;
-        
-        try {
-            const { type, ...data } = event.detail;
-            
-            switch (type) {
-                case 'transport_toggle':
-                    if (audioManager.isPlaying) {
-                        audioManager.stop();
-                    } else {
-                        audioManager.start();
-                    }
-                    break;
-
-                case 'note_input':
-                    if (data.channel !== undefined) {
-                        this.createWaveformRing(data.channel);
-                    }
-                    break;
-
-                case 'sample_select':
-                    if (data.sample !== undefined) {
-                        this.updateSampleVisualizer(data.sample);
-                    }
-                    break;
-            }
-        } catch (error) {
-            console.error('Error handling tracker event:', error);
         }
     }
 
@@ -230,73 +250,212 @@ export class Beat extends Scene {
         }
     }
 
-    private updateSampleVisualizer(sampleIndex: number): void {
+    draw(_amplitude: number = 0, _frequency: number = 440): void {
+        if (!this._isInitialized) {
+            this.drawLoadingState();
+            return;
+        }
+
+        if (!this.audioInitialized) {
+            this.drawWaitingForAudioState();
+            return;
+        }
+
         try {
-            const samples = (audioManager as any).samples;
-            const sample = samples?.[sampleIndex];
-            if (sample && sample.data) {
-                this.sampleVisualizers.set(sampleIndex, {
-                    data: sample.data,
-                    offset: 0,
-                    speed: 1,
-                    active: true
-                });
-            }
+            // Draw background with fade effect
+            this.p5.push();
+            this.p5.fill(0, 30);
+            this.p5.noStroke();
+            this.p5.rect(0, 0, this.p5.width, this.p5.height);
+            this.p5.pop();
+
+            // Get audio metrics with error handling
+            const metrics = audioManager.getAudioMetrics() || {
+                midIntensity: '0',
+                highIntensity: '0',
+                bassIntensity: '0',
+                waveform: new Float32Array(1024)
+            };
+
+            // Update and draw visual elements
+            const midFreq = parseFloat(metrics.midIntensity) || 0;
+            const highFreq = parseFloat(metrics.highIntensity) || 0;
+            const bassIntensity = parseFloat(metrics.bassIntensity) || 0;
+            const waveform = metrics.waveform || new Float32Array(1024);
+            const currentTime = Date.now();
+            const isBeat = this.detectBeat(bassIntensity, currentTime);
+
+            this.updateParticles(midFreq, bassIntensity);
+            this.updateWaveformRings();
+            this.updateGeometricPatterns(highFreq, bassIntensity, isBeat);
+            
+            this.drawParticles();
+            this.drawGeometricPatterns();
+            this.drawWaveformRings(waveform);
         } catch (error) {
-            console.error('Error updating sample visualizer:', error);
+            console.error('Error in beat scene draw:', error);
+            this.drawErrorState(error as Error);
         }
     }
 
-    private updateParticles(midFreq: number, bassIntensity: number): void {
-        try {
-            const centerX = this.p5.width / 2;
-            const centerY = this.p5.height / 2;
-            
-            this.particles.forEach(p => {
-                // Update particle energy
-                p.energy = this.p5.lerp(p.energy, bassIntensity, 0.1);
-                
-                // Calculate direction to center
-                const dx = centerX - p.x;
-                const dy = centerY - p.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                
-                // Add circular motion
-                const rotationSpeed = 0.02 * (1 + p.energy);
-                const angle = Math.atan2(dy, dx) + rotationSpeed;
-                
-                // Update velocities with both circular motion and center attraction
-                const attraction = 0.02 * bassIntensity;
-                p.speedX = p.speedX * 0.95 + (Math.cos(angle) * dist * 0.01 + dx * attraction) * midFreq;
-                p.speedY = p.speedY * 0.95 + (Math.sin(angle) * dist * 0.01 + dy * attraction) * midFreq;
-                
-                // Apply speed limits
-                const maxSpeed = 5 * (1 + p.energy);
-                const currentSpeed = Math.sqrt(p.speedX * p.speedX + p.speedY * p.speedY);
-                if (currentSpeed > maxSpeed) {
-                    p.speedX = (p.speedX / currentSpeed) * maxSpeed;
-                    p.speedY = (p.speedY / currentSpeed) * maxSpeed;
-                }
-                
-                // Update position
-                p.x += p.speedX;
-                p.y += p.speedY;
-                
-                // Wrap around screen edges with smooth transition
-                const buffer = 50;
-                if (p.x < -buffer) p.x = this.p5.width + buffer;
-                if (p.x > this.p5.width + buffer) p.x = -buffer;
-                if (p.y < -buffer) p.y = this.p5.height + buffer;
-                if (p.y > this.p5.height + buffer) p.y = -buffer;
-                
-                // Update visual properties
-                p.hue = (p.hue + p.energy * 2) % 360;
-                p.alpha = this.p5.map(p.energy, 0, 1, 0.3, 0.8);
-                p.size = this.p5.map(p.energy, 0, 1, 2, 8);
-            });
-        } catch (error) {
-            console.error('Error updating particles:', error);
+    private drawLoadingState(): void {
+        this.p5.push();
+        this.p5.background(0);
+        this.p5.fill(255);
+        this.p5.noStroke();
+        this.p5.textAlign(this.p5.CENTER, this.p5.CENTER);
+        this.p5.text('Loading...', this.p5.width / 2, this.p5.height / 2);
+        this.p5.pop();
+    }
+
+    private drawWaitingForAudioState(): void {
+        this.p5.push();
+        this.p5.background(0);
+        this.p5.fill(255);
+        this.p5.noStroke();
+        this.p5.textAlign(this.p5.CENTER, this.p5.CENTER);
+        this.p5.text('Click "Initialize Audio System" to start', this.p5.width / 2, this.p5.height / 2);
+        this.p5.pop();
+    }
+
+    private drawErrorState(error: Error): void {
+        this.p5.push();
+        this.p5.background(0);
+        this.p5.fill(255, 0, 0);
+        this.p5.noStroke();
+        this.p5.textAlign(this.p5.CENTER, this.p5.CENTER);
+        this.p5.text('Error: ' + error.message, this.p5.width / 2, this.p5.height / 2);
+        this.p5.pop();
+    }
+
+    private detectBeat(bassIntensity: number, currentTime: number): boolean {
+        // Add current energy to history
+        this.energyHistory.push(bassIntensity);
+        if (this.energyHistory.length > this.MAX_HISTORY) {
+            this.energyHistory.shift();
         }
+
+        // Calculate average energy and variance
+        const averageEnergy = this.energyHistory.reduce((a, b) => a + b, 0) / this.energyHistory.length;
+        const variance = this.energyHistory.reduce((a, b) => a + Math.pow(b - averageEnergy, 2), 0) / this.energyHistory.length;
+        
+        // Dynamic threshold based on recent history and variance
+        const dynamicThreshold = averageEnergy + Math.sqrt(variance) * 1.5;
+
+        // Sync with current tempo and add some flexibility
+        const tempo = audioManager.currentTempo;
+        const minInterval = Math.min(60000 / (tempo * 1.1), 60000 / (tempo * 2));
+        const timeSinceLastBeat = currentTime - this.lastBeatTime;
+        
+        if (bassIntensity > dynamicThreshold && timeSinceLastBeat > minInterval) {
+            this.lastBeatTime = currentTime;
+            this.lastBeatEnergy = bassIntensity;
+            this.beatHistory.push(currentTime);
+            
+            // Keep only recent beats for visualization
+            while (this.beatHistory.length > 0 && currentTime - this.beatHistory[0] > 2000) {
+                this.beatHistory.shift();
+            }
+            
+            return true;
+        }
+        return false;
+    }
+
+    private updateGeometricPatterns(highFreq: number, bassIntensity: number, isBeat: boolean): void {
+        const centerX = this.p5.width / 2;
+        const centerY = this.p5.height / 2;
+        const currentTime = Date.now();
+        
+        this.geometricPatterns.forEach((pattern, index) => {
+            // Enhanced energy calculation with beat influence
+            const beatEnergy = isBeat ? this.lastBeatEnergy * 2 : 0;
+            pattern.energy = this.p5.lerp(pattern.energy, bassIntensity + beatEnergy, 0.2);
+            
+            // Dynamic orbit behavior
+            const beatPhase = this.beatHistory.length > 0 ? 
+                Math.sin((currentTime - this.beatHistory[0]) / 500 * Math.PI) : 0;
+            pattern.orbitSpeed = 0.001 + pattern.energy * 0.01 + beatPhase * 0.005;
+            pattern.orbitAngle += pattern.orbitSpeed;
+            
+            // Enhanced position calculation with wobble
+            const orbitRadius = 150 * (1 + pattern.energy * 0.3 + beatPhase * 0.2);
+            const wobble = Math.sin(currentTime * 0.003 + index) * 20 * pattern.energy;
+            pattern.x = centerX + Math.cos(pattern.orbitAngle) * (orbitRadius + wobble);
+            pattern.y = centerY + Math.sin(pattern.orbitAngle) * (orbitRadius + wobble);
+            
+            // Enhanced rotation with beat influence
+            pattern.rotation += 0.02 + highFreq * 0.1 + (isBeat ? 0.2 : 0);
+            
+            // Dynamic size modulation
+            pattern.pulsePhase += 0.05 + pattern.energy * 0.02;
+            const basePulse = Math.sin(pattern.pulsePhase) * 10;
+            const beatPulse = isBeat ? 30 * this.lastBeatEnergy : 0;
+            const energyPulse = pattern.energy * 20;
+            pattern.size = pattern.baseSize * (1 + pattern.energy) + basePulse + beatPulse + energyPulse;
+            
+            // Enhanced color modulation
+            const hueShift = beatPhase * 30 + pattern.energy * 60;
+            pattern.hue = (index * 45 + hueShift) % 360;
+        });
+    }
+
+    private updateParticles(midFreq: number, bassIntensity: number): void {
+        const centerX = this.p5.width / 2;
+        const centerY = this.p5.height / 2;
+        const currentTime = Date.now();
+        
+        this.particles.forEach(p => {
+            // Enhanced energy calculation with beat influence
+            const beatInfluence = this.beatHistory.length > 0 ? 
+                Math.exp(-(currentTime - this.beatHistory[this.beatHistory.length - 1]) / 500) : 0;
+            p.energy = this.p5.lerp(p.energy, bassIntensity + beatInfluence, 0.15);
+            
+            // Calculate direction with enhanced movement
+            const dx = centerX - p.x;
+            const dy = centerY - p.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            // Enhanced circular motion
+            const rotationSpeed = 0.02 * (1 + p.energy * 2);
+            const angle = Math.atan2(dy, dx) + rotationSpeed;
+            
+            // Add wave motion
+            const wavePhase = currentTime * 0.001 + p.hue * 0.1;
+            const waveAmplitude = 2 * p.energy;
+            const waveX = Math.sin(wavePhase) * waveAmplitude;
+            const waveY = Math.cos(wavePhase) * waveAmplitude;
+            
+            // Update velocities with enhanced movement
+            const attraction = 0.02 * (bassIntensity + beatInfluence);
+            p.speedX = p.speedX * 0.95 + (Math.cos(angle) * dist * 0.01 + dx * attraction) * midFreq + waveX;
+            p.speedY = p.speedY * 0.95 + (Math.sin(angle) * dist * 0.01 + dy * attraction) * midFreq + waveY;
+            
+            // Enhanced speed limits
+            const maxSpeed = 5 * (1 + p.energy * 2);
+            const currentSpeed = Math.sqrt(p.speedX * p.speedX + p.speedY * p.speedY);
+            if (currentSpeed > maxSpeed) {
+                p.speedX = (p.speedX / currentSpeed) * maxSpeed;
+                p.speedY = (p.speedY / currentSpeed) * maxSpeed;
+            }
+            
+            // Update position
+            p.x += p.speedX;
+            p.y += p.speedY;
+            
+            // Enhanced screen wrapping
+            const buffer = 50;
+            if (p.x < -buffer) p.x = this.p5.width + buffer;
+            if (p.x > this.p5.width + buffer) p.x = -buffer;
+            if (p.y < -buffer) p.y = this.p5.height + buffer;
+            if (p.y > this.p5.height + buffer) p.y = -buffer;
+            
+            // Enhanced visual properties
+            const beatColorShift = beatInfluence * 60;
+            p.hue = (p.hue + p.energy * 2 + beatColorShift) % 360;
+            p.alpha = this.p5.map(p.energy + beatInfluence, 0, 1, 0.3, 0.9);
+            p.size = this.p5.map(p.energy + beatInfluence, 0, 1, 2, 10);
+        });
     }
 
     private updateWaveformRings(): void {
@@ -316,117 +475,6 @@ export class Beat extends Scene {
         }
     }
 
-    private detectBeat(bassIntensity: number, currentTime: number): boolean {
-        const threshold = 0.5;
-        const minInterval = 200; // Minimum time between beats (ms)
-        
-        if (bassIntensity > threshold && (currentTime - this.lastBeatTime) > minInterval) {
-            this.lastBeatTime = currentTime;
-            return true;
-        }
-        return false;
-    }
-
-    draw(_amplitude: number = 0, _frequency: number = 440): void {
-        if (!this._isInitialized) {
-            this.drawLoadingState();
-            return;
-        }
-
-        try {
-            // Draw background with fade effect
-            this.p5.push();
-            this.p5.fill(0, 30);
-            this.p5.noStroke();
-            this.p5.rect(0, 0, this.p5.width, this.p5.height);
-            this.p5.pop();
-
-            // Get audio metrics with error handling
-            let metrics: AudioMetrics;
-            try {
-                metrics = audioManager.getAudioMetrics() || {} as AudioMetrics;
-            } catch (error) {
-                console.error('Error getting audio metrics:', error);
-                metrics = {} as AudioMetrics;
-            }
-
-            // Update and draw visual elements
-            const midFreq = parseFloat(metrics.midIntensity) || 0;
-            const highFreq = parseFloat(metrics.highIntensity) || 0;
-            const bassIntensity = parseFloat(metrics.bassIntensity) || 0;
-            const waveform = metrics.waveform || new Float32Array(1024);
-            const currentTime = Date.now();
-            const isBeat = this.detectBeat(bassIntensity, currentTime);
-
-            this.updateParticles(midFreq, bassIntensity);
-            this.updateWaveformRings();
-            this.updateGeometricPatterns(highFreq, bassIntensity, isBeat);
-            
-            this.drawParticles();
-            this.drawGeometricPatterns();
-            this.drawWaveformRings(waveform);
-
-            // Draw tracker if available
-            if (this.tracker && this.audioInitialized) {
-                this.tracker.draw(metrics);
-            }
-        } catch (error) {
-            console.error('Error in beat scene draw:', error);
-            this.drawErrorState(error as Error);
-        }
-    }
-
-    private updateGeometricPatterns(highFreq: number, bassIntensity: number, isBeat: boolean): void {
-        const centerX = this.p5.width / 2;
-        const centerY = this.p5.height / 2;
-        
-        this.geometricPatterns.forEach((pattern, index) => {
-            // Update energy with smooth transition
-            pattern.energy = this.p5.lerp(pattern.energy, bassIntensity, 0.1);
-            
-            // Update orbit
-            pattern.orbitSpeed = 0.001 + pattern.energy * 0.01;
-            pattern.orbitAngle += pattern.orbitSpeed;
-            
-            // Calculate new position based on orbit
-            const orbitRadius = 150 * (1 + pattern.energy * 0.2);
-            pattern.x = centerX + Math.cos(pattern.orbitAngle) * orbitRadius;
-            pattern.y = centerY + Math.sin(pattern.orbitAngle) * orbitRadius;
-            
-            // Update rotation based on high frequencies
-            pattern.rotation += 0.02 + highFreq * 0.1;
-            
-            // Update size with pulse effect
-            pattern.pulsePhase += 0.05;
-            const basePulse = Math.sin(pattern.pulsePhase) * 10;
-            const beatPulse = isBeat ? 20 : 0;
-            pattern.size = pattern.baseSize * (1 + pattern.energy) + basePulse + beatPulse;
-            
-            // Update color based on energy
-            pattern.hue = (index * 45 + pattern.energy * 30) % 360;
-        });
-    }
-
-    private drawLoadingState(): void {
-        this.p5.push();
-        this.p5.background(0);
-        this.p5.fill(255);
-        this.p5.noStroke();
-        this.p5.textAlign(this.p5.CENTER, this.p5.CENTER);
-        this.p5.text('Loading...', this.p5.width / 2, this.p5.height / 2);
-        this.p5.pop();
-    }
-
-    private drawErrorState(error: Error): void {
-        this.p5.push();
-        this.p5.background(0);
-        this.p5.fill(255, 0, 0);
-        this.p5.noStroke();
-        this.p5.textAlign(this.p5.CENTER, this.p5.CENTER);
-        this.p5.text('Error: ' + error.message, this.p5.width / 2, this.p5.height / 2);
-        this.p5.pop();
-    }
-
     private drawParticles(): void {
         try {
             this.p5.push();
@@ -434,22 +482,27 @@ export class Beat extends Scene {
             this.p5.blendMode(this.p5.ADD);
             this.p5.noStroke();
             
+            const currentTime = Date.now();
+            const beatActive = this.beatHistory.length > 0 && 
+                             currentTime - this.beatHistory[this.beatHistory.length - 1] < 200;
+            
             this.particles.forEach(p => {
-                const glowSize = p.size * 2;
+                const glowSize = p.size * (beatActive ? 3 : 2);
+                const energyScale = 1 + p.energy * (beatActive ? 2 : 1);
                 
-                // Draw particle glow
-                this.p5.fill(p.hue, 80, 100, p.alpha * 0.3);
+                // Enhanced particle glow
+                this.p5.fill(p.hue, 80, 100, p.alpha * 0.3 * energyScale);
                 this.p5.circle(p.x, p.y, glowSize);
                 
-                // Draw particle core
-                this.p5.fill(p.hue, 80, 100, p.alpha);
+                // Enhanced particle core
+                this.p5.fill(p.hue, 80, 100, p.alpha * energyScale);
                 this.p5.circle(p.x, p.y, p.size);
                 
-                // Draw energy trail
-                if (p.energy > 0.5) {
-                    const trailLength = p.energy * 10;
-                    this.p5.stroke(p.hue, 80, 100, p.alpha * 0.5);
-                    this.p5.strokeWeight(1);
+                // Enhanced energy trail
+                if (p.energy > 0.3) {
+                    const trailLength = p.energy * (beatActive ? 15 : 10);
+                    this.p5.stroke(p.hue, 80, 100, p.alpha * 0.5 * energyScale);
+                    this.p5.strokeWeight(beatActive ? 2 : 1);
                     this.p5.line(
                         p.x, p.y,
                         p.x - p.speedX * trailLength,
@@ -577,22 +630,18 @@ export class Beat extends Scene {
             this._isInitialized = false;
             
             // Remove event listeners
-            if (this._boundTrackerEventHandler) {
-                window.removeEventListener('tracker-event', this._boundTrackerEventHandler as EventListener);
-                this._boundTrackerEventHandler = null;
+            if (this._boundEventHandler) {
+                window.removeEventListener('magenta-event', this._boundEventHandler as EventListener);
+                this._boundEventHandler = null;
             }
             
-            // Clean up tracker
-            if (this.tracker) {
-                this.tracker.cleanup();
-                this.tracker = null;
-            }
+            // Clean up Magenta generator
+            this.magentaGenerator = null;
             
             // Clear visual elements
             this.particles = [];
             this.waveformRings = [];
             this.geometricPatterns = [];
-            this.sampleVisualizers.clear();
             
             // Reset blend mode
             this.p5.blendMode(this.p5.BLEND);
@@ -606,5 +655,3 @@ export class Beat extends Scene {
         }
     }
 }
-
-export default Beat;

@@ -22,6 +22,8 @@
     "test:types": "tsc --noEmit",
     "test:lint": "eslint src --ext ts,tsx --max-warnings 0",
     "postinstall": "npm run setup",
+    "predeploy": "npm run build",
+    "deploy": "node scripts/deploy.js",
     "stop": "powershell -Command \"Stop-Process -Name 'node' -Force -ErrorAction SilentlyContinue; Stop-Process -Name 'python' -Force -ErrorAction SilentlyContinue\"",
     "restart": "npm run stop && npm start"
   },

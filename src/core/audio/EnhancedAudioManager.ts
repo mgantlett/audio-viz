@@ -359,8 +359,20 @@ export class EnhancedAudioManager extends AudioBase {
                 { note: 'F2', pos: 60, vel: 48 }   // Root again
             ];
 
-            // Create the pattern
+            // Basic drum pattern (4/4 time)
             for (let i = 0; i < 64; i++) {
+                // Kick on 1 and 3
+                if (i % 16 === 0 || i % 16 === 8) {
+                    pattern.setNote(i, 0, 'C3', 'kick', 64);
+                }
+                // Snare on 2 and 4
+                if (i % 16 === 4 || i % 16 === 12) {
+                    pattern.setNote(i, 1, 'D3', 'snare', 64);
+                }
+                // Hihat on every other 8th note
+                if (i % 4 === 0) {
+                    pattern.setNote(i, 2, 'F#3', 'hihat', 48);
+                }
                 // Bass line
                 const bassNote = bassline.find(note => note.pos === i);
                 if (bassNote) {

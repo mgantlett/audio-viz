@@ -54,6 +54,13 @@ export class Beat extends Scene {
             
             console.log('Beat scene initialized successfully');
             this._isInitialized = true;
+
+            // Start playback automatically
+            if (audioManager.isInitialized() && !audioManager.isPlaying) {
+                console.log('Starting automatic playback...');
+                audioManager.start();
+            }
+
             return true;
         } catch (error) {
             console.error('Error initializing beat scene:', error);
@@ -72,24 +79,19 @@ export class Beat extends Scene {
                     throw new Error('Failed to initialize audio manager in tracker mode');
                 }
 
-                // Wait for audio manager to be ready
-                while (!audioManager.isInitialized()) {
-                    console.log('Waiting for audio manager...');
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                if (!audioManager.isInitialized()) {
+                    throw new Error('Failed to initialize audio manager');
                 }
             }
-
             // Initialize tracker
             if (!this.tracker && this.AudioTrackerClass) {
                 console.log('Initializing audio tracker...');
                 this.tracker = new this.AudioTrackerClass(this.p5);
-                // Wait for tracker initialization
-                await new Promise(resolve => setTimeout(resolve, 200));
             }
 
             // Verify tracker initialization
-            if (!this.tracker || !this.tracker.display) {
-                throw new Error('Failed to initialize audio tracker');
+            if (!this.tracker) {
+                throw new Error('Failed to create audio tracker');
             }
 
             this.audioInitialized = true;
@@ -317,11 +319,15 @@ export class Beat extends Scene {
     }
 
     private detectBeat(bassIntensity: number, currentTime: number): boolean {
-        const threshold = 0.5;
-        const minInterval = 200; // Minimum time between beats (ms)
+        const threshold = 0.35; // Lower threshold to catch kicks better
+        const minInterval = this.beatInterval / 2; // Sync with our pattern's timing
         
+        // Detect strong bass hits (kicks)
         if (bassIntensity > threshold && (currentTime - this.lastBeatTime) > minInterval) {
             this.lastBeatTime = currentTime;
+            // Update beat interval based on tempo (if needed)
+            const tempo = audioManager.getAudioMetrics()?.bpm || 120;
+            this.beatInterval = (60 / tempo) * 1000 / 2; // Convert BPM to ms per half-beat
             return true;
         }
         return false;

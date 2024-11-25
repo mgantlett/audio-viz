@@ -42,11 +42,11 @@ export class EnhancedAudioManager extends AudioBase {
 
         // Default samples to load
         this.defaultSamples = [
-            { name: 'kick', url: '/samples/samples/kick.wav', baseNote: 'C3' },
-            { name: 'snare', url: '/samples/samples/snare.wav', baseNote: 'D3' },
-            { name: 'hihat', url: '/samples/samples/hihat.wav', baseNote: 'F#3' },
+            { name: 'kick', url: '/samples/kick.wav', baseNote: 'C3' },
+            { name: 'snare', url: '/samples/snare.wav', baseNote: 'D3' },
+            { name: 'hihat', url: '/samples/hihat.wav', baseNote: 'F#3' },
             { name: 'bass', url: '/samples/bass.wav', baseNote: 'C2' },
-            { name: 'lead', url: '/samples/samples/lead.wav', baseNote: 'C4' }
+            { name: 'lead', url: '/samples/lead.wav', baseNote: 'C4' }
         ];
     }
 

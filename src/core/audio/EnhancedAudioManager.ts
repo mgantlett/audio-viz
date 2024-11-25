@@ -41,7 +41,21 @@ export class EnhancedAudioManager extends AudioBase {
         this._currentTempo = 135;
 
         // Default samples to load
-        const basePath = import.meta.env.BASE_URL || '/';
+        // Get the base URL from the current script's src attribute or fall back to relative path
+        const getBasePath = () => {
+            const scripts = document.getElementsByTagName('script');
+            for (let i = 0; i < scripts.length; i++) {
+                const src = scripts[i].src;
+                if (src.includes('/audio-viz/assets/')) {
+                    return src.split('/assets/')[0] + '/';
+                }
+            }
+            return './';
+        };
+        
+        const basePath = getBasePath();
+        console.log('Using base path for samples:', basePath);
+        
         this.defaultSamples = [
             { name: 'kick', url: `${basePath}samples/kick.wav`, baseNote: 'C3' },
             { name: 'snare', url: `${basePath}samples/snare.wav`, baseNote: 'D3' },

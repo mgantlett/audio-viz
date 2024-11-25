@@ -1,7 +1,19 @@
-import { defineConfig } from 'vite';
+import { defineConfig, Plugin } from 'vite';
 import path from 'path';
 
+// Create a plugin to inject build timestamp
+const buildTimestampPlugin = (): Plugin => ({
+  name: 'build-timestamp',
+  transformIndexHtml: {
+    transform(html) {
+      const timestamp = new Date().toLocaleString();
+      return html.replace('<!--BUILD_TIMESTAMP-->', timestamp);
+    }
+  }
+});
+
 export default defineConfig({
+  plugins: [buildTimestampPlugin()],
   root: 'src',
   publicDir: '../public',
   build: {

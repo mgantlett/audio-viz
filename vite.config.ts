@@ -14,6 +14,7 @@ const buildTimestampPlugin = (): Plugin => ({
 
 export default defineConfig({
   plugins: [buildTimestampPlugin()],
+  base: '/audio-viz/',
   root: 'src',
   publicDir: '../public',
   build: {

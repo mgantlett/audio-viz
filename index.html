@@ -27,10 +27,6 @@
   <link rel="stylesheet" crossorigin href="/audio-viz/assets/index-CLo_kBZH.css">
 </head>
 <body class="m-0 p-0 bg-black text-white font-sans overflow-hidden">
-        <!-- Build Timestamp -->
-        <div class="fixed bottom-2 right-2 font-mono text-xs text-white/30">
-            Build: <!--BUILD_TIMESTAMP-->
-        </div>
     <div id="app" class="w-screen h-screen relative">
         <main id="canvas-container" class="w-full h-full"></main>
 
@@ -84,6 +80,11 @@
         </div>
 
         <!-- Modal System -->
+        <!-- Build Timestamp -->
+        <div class="fixed bottom-2 right-2 font-mono text-xs text-white/30 z-50">
+            Build: <!--BUILD_TIMESTAMP-->
+        </div>
+
         <div id="modalOverlay" class="modal-overlay fixed inset-0 bg-black/85 flex justify-center items-center z-[1000] opacity-0 pointer-events-none transition-all duration-300 backdrop-blur-sm">
             <div class="modal bg-[#1a1a2e] p-6 rounded-xl max-w-[800px] w-[90%] max-h-[90vh] overflow-y-auto transform translate-y-5 transition-all duration-300 shadow-xl border border-white/10">
                 <div class="modal-header flex justify-between items-center mb-5 pb-4 border-b border-white/10">

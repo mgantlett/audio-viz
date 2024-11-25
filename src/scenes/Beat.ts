@@ -72,24 +72,19 @@ export class Beat extends Scene {
                     throw new Error('Failed to initialize audio manager in tracker mode');
                 }
 
-                // Wait for audio manager to be ready
-                while (!audioManager.isInitialized()) {
-                    console.log('Waiting for audio manager...');
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                if (!audioManager.isInitialized()) {
+                    throw new Error('Failed to initialize audio manager');
                 }
             }
-
             // Initialize tracker
             if (!this.tracker && this.AudioTrackerClass) {
                 console.log('Initializing audio tracker...');
                 this.tracker = new this.AudioTrackerClass(this.p5);
-                // Wait for tracker initialization
-                await new Promise(resolve => setTimeout(resolve, 200));
             }
 
             // Verify tracker initialization
-            if (!this.tracker || !this.tracker.display) {
-                throw new Error('Failed to initialize audio tracker');
+            if (!this.tracker) {
+                throw new Error('Failed to create audio tracker');
             }
 
             this.audioInitialized = true;

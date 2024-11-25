@@ -6,8 +6,14 @@ const buildTimestampPlugin = (): Plugin => ({
   name: 'build-timestamp',
   transformIndexHtml: {
     transform(html) {
+      console.log('Injecting build timestamp...');
       const timestamp = new Date().toLocaleString();
-      return html.replace('<!--BUILD_TIMESTAMP-->', timestamp);
+      console.log('Timestamp:', timestamp);
+      const result = html.replace('<!--BUILD_TIMESTAMP-->', timestamp);
+      if (result === html) {
+        console.warn('Warning: Build timestamp placeholder not found in HTML');
+      }
+      return result;
     }
   }
 });

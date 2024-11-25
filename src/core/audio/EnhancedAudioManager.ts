@@ -45,7 +45,7 @@ export class EnhancedAudioManager extends AudioBase {
             { name: 'kick', url: '/audio-viz/samples/kick.wav', baseNote: 'C3' },
             { name: 'snare', url: '/audio-viz/samples/snare.wav', baseNote: 'D3' },
             { name: 'hihat', url: '/audio-viz/samples/hihat.wav', baseNote: 'F#3' },
-            { name: 'bass', url: '/audio-viz/samples/bass.wav', baseNote: 'C2' },
+            { name: 'bass', url: '/samples/bass.wav', baseNote: 'C2' },
             { name: 'lead', url: '/audio-viz/samples/lead.wav', baseNote: 'C4' }
         ];
     }

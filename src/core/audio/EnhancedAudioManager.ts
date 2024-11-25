@@ -41,12 +41,13 @@ export class EnhancedAudioManager extends AudioBase {
         this._currentTempo = 135;
 
         // Default samples to load
+        const basePath = import.meta.env.BASE_URL || '/';
         this.defaultSamples = [
-            { name: 'kick', url: 'samples/kick.wav', baseNote: 'C3' },
-            { name: 'snare', url: 'samples/snare.wav', baseNote: 'D3' },
-            { name: 'hihat', url: 'samples/hihat.wav', baseNote: 'F#3' },
-            { name: 'bass', url: 'samples/bass.wav', baseNote: 'C2' },
-            { name: 'lead', url: 'samples/lead.wav', baseNote: 'C4' }
+            { name: 'kick', url: `${basePath}samples/kick.wav`, baseNote: 'C3' },
+            { name: 'snare', url: `${basePath}samples/snare.wav`, baseNote: 'D3' },
+            { name: 'hihat', url: `${basePath}samples/hihat.wav`, baseNote: 'F#3' },
+            { name: 'bass', url: `${basePath}samples/bass.wav`, baseNote: 'C2' },
+            { name: 'lead', url: `${basePath}samples/lead.wav`, baseNote: 'C4' }
         ];
     }
 

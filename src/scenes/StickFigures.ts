@@ -124,7 +124,7 @@ export class StickFigures extends Scene {
         }
     }
 
-    draw(amplitude: number = 0, _frequency: number = 440): void {
+    draw(amplitude: number = 0.1, _frequency: number = 440): void {
         try {
             // Clear background
             this.p5.background(0);

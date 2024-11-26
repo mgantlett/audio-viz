@@ -87,7 +87,7 @@ export class ParticleWave extends Scene {
         }
     }
 
-    draw(amplitude: number = 0, frequency: number = 440): void {
+    draw(amplitude: number = 0.1, frequency: number = 440): void {
         // Clear background
         this.p5.background(0);
         

@@ -1,13 +1,13 @@
-import type { ISceneManager } from './scene';
-import type { IUIManager } from '../core/UIManager';
-import type { IAudioManager } from './audio';
 import type p5 from 'p5';
+import type { AudioManager } from '../core/audio/AudioManager';
+import type { SceneManager } from '../core/SceneManager';
 
 declare global {
     interface Window {
-        sceneManager: ISceneManager;
-        uiManager: IUIManager;
-        audioManager: IAudioManager;
         p5Instance: p5;
+        audioManager: AudioManager;
+        sceneManager: SceneManager;
     }
 }
+
+export {};

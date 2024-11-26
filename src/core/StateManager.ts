@@ -1,5 +1,6 @@
 import { AppState, IStateManager, StateUpdate, defaultAppState } from '../types/state';
 import { eventBus } from './EventBus';
+import type { SceneName } from '../types/scene';
 
 export class StateManager implements IStateManager {
   private state: AppState;
@@ -173,8 +174,7 @@ if (import.meta.env.DEV) {
     if (state.scene.currentScene !== defaultAppState.scene.currentScene) {
       eventBus.emit({
         type: 'scene:switched',
-        from: defaultAppState.scene.currentScene,
-        to: state.scene.currentScene
+        to: state.scene.currentScene as SceneName
       });
     }
   });

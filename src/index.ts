@@ -2,33 +2,33 @@ import './style.css';
 import p5 from 'p5';
 import { app } from './core/App';
 import { registerScenes } from './scenes';
-import './components'; // This will initialize all components
 
 // Create p5 instance
 const sketch = (p: p5): void => {
-    p.setup = function(): void {
-        console.log('Setting up visualization');
+    p.setup = async function(): Promise<void> {
+        console.log('[p5] Setting up visualization');
         
         // Create canvas inside container
         const canvas = p.createCanvas(p.windowWidth, p.windowHeight);
         canvas.parent('canvas-container');
+        canvas.style('display', 'block');
+        canvas.style('cursor', 'crosshair');
 
         // Store p5 instance globally
         window.p5Instance = p;
 
-        // Initialize scenes first
         try {
-            // Wait for SceneManager to be available
-            if (!window.sceneManager) {
-                throw new Error('SceneManager not initialized');
-            }
+            // Initialize app first to set up core systems
+            console.log('[p5] Initializing app...');
+            await app.initialize();
 
-            // Register scenes
-            registerScenes(p);
-            
-            console.log('Managers initialized successfully');
+            // Register scenes after core systems are ready
+            console.log('[p5] Registering scenes...');
+            await registerScenes(p);
+
+            console.log('[p5] Setup completed successfully');
         } catch (error) {
-            console.error('Error during initialization:', error);
+            console.error('[p5] Error in setup:', error);
         }
     };
 
@@ -39,9 +39,10 @@ const sketch = (p: p5): void => {
 
             // Draw current scene through SceneManager
             if (window.sceneManager) {
-                window.sceneManager.draw();
+                window.sceneManager.draw(p);
             }
         } catch (error) {
+            console.error('[p5] Error in draw loop:', error);
             // If there's an error in the draw loop, show it on screen
             p.background(0);
             p.fill(255, 0, 0);
@@ -51,7 +52,6 @@ const sketch = (p: p5): void => {
             if (error instanceof Error) {
                 p.text("Error: " + error.message, p.width/2, p.height/2);
             }
-            console.error('Error in draw loop:', error);
         }
     };
 
@@ -59,59 +59,79 @@ const sketch = (p: p5): void => {
         try {
             p.resizeCanvas(p.windowWidth, p.windowHeight);
             if (window.sceneManager) {
-                window.sceneManager.windowResized();
+                window.sceneManager.handleResize();
             }
         } catch (error) {
-            console.error('Error handling window resize:', error);
+            console.error('[p5] Error handling window resize:', error);
         }
     };
 
-    // Add mouse move handler for audio control
-    p.mouseMoved = function(): void {
+    const handleInteraction = function(x: number, y: number): void {
         try {
-            if (window.sceneManager && 
-                window.audioManager && 
-                window.audioManager.isInitialized() &&
-                window.audioManager.isPlaying) {
-                const freq = p.map(p.mouseX, 0, p.width, 200, 800);
-                const amp = p.map(p.mouseY, 0, p.height, 1, 0);
-                window.audioManager.setFrequency(freq);
-                window.audioManager.setAmplitude(amp);
+            if (window.sceneManager && window.audioManager?.isPlaying) {
+                // Map mouse coordinates to canvas dimensions
+                const canvasX = p.constrain(x, 0, p.width);
+                const canvasY = p.constrain(y, 0, p.height);
+                
+                window.sceneManager.handleInteraction(canvasX, canvasY, p.width, p.height);
             }
         } catch (error) {
-            console.error('Error handling mouse move:', error);
+            console.error('[p5] Error handling interaction:', error);
         }
     };
+
+    // Add mouse move handler
+    p.mouseMoved = function(event: MouseEvent): void {
+        handleInteraction(p.mouseX, p.mouseY);
+        event.preventDefault();
+    };
+
+    // Add mouse drag handler (for better mobile support)
+    p.mouseDragged = function(event: MouseEvent): void {
+        handleInteraction(p.mouseX, p.mouseY);
+        event.preventDefault();
+    };
+
+    // Add touch move handler
+    p.touchMoved = function(event: TouchEvent): void {
+        if (p.touches.length > 0) {
+            const touch = p.touches[0] as { x: number; y: number };
+            handleInteraction(touch.x, touch.y);
+        }
+        event.preventDefault();
+    };
+
+    // Add touch start handler (for initial touch)
+    p.touchStarted = function(event: TouchEvent): void {
+        if (p.touches.length > 0) {
+            const touch = p.touches[0] as { x: number; y: number };
+            handleInteraction(touch.x, touch.y);
+        }
+        event.preventDefault();
+    };
+
+    // Prevent default touch behavior
+    document.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 };
 
-// Wait for DOMContentLoaded before initializing
-document.addEventListener('DOMContentLoaded', async () => {
+// Create app structure before initializing p5
+const appContainer = document.createElement('div');
+appContainer.id = 'app';
+appContainer.className = 'w-screen h-screen relative';
+document.body.appendChild(appContainer);
+
+const canvasContainer = document.createElement('main');
+canvasContainer.id = 'canvas-container';
+canvasContainer.className = 'w-full h-full';
+appContainer.appendChild(canvasContainer);
+
+// Wait for DOMContentLoaded before creating p5 instance
+document.addEventListener('DOMContentLoaded', () => {
     try {
-        // Initialize app first
-        await app.initialize();
-        
-        // Create p5 instance
+        console.log('[Main] Creating p5 instance...');
         new p5(sketch);
-        
-        // Error handling for p5.js
-        window.addEventListener('error', function(e: ErrorEvent) {
-            console.error('Global error:', e.error);
-            // Show error on canvas if possible
-            try {
-                const p = window.p5Instance;
-                if (p) {
-                    p.background(0);
-                    p.fill(255, 0, 0);
-                    p.noStroke();
-                    p.textAlign(p.CENTER, p.CENTER);
-                    p.textSize(16);
-                    p.text("Error: " + e.error.message, p.width/2, p.height/2);
-                }
-            } catch (err) {
-                console.error('Error displaying error message:', err);
-            }
-        });
     } catch (error) {
-        console.error('Error initializing application:', error);
+        console.error('[Main] Error initializing application:', error);
     }
 });

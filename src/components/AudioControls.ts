@@ -1,578 +1,238 @@
-import { Component } from '../core/Component';
-import { EventBus } from '../core/EventBus';
-import { audioManager } from '../core/audio';
-import { sceneManager } from '../core/SceneManager';
-import type { IAudioManager } from '../types/audio';
+import type { AudioManager } from '../core/audio/AudioManager';
+import type { EventBus } from '../core/EventBus';
 
-interface ControlEvent {
-    deltaY: number;
-    preventDefault: () => void;
-    clientX?: number;
-}
+export class AudioControls {
+    private container: HTMLElement;
+    private playButton: HTMLElement;
+    private volumeSlider: HTMLInputElement;
+    private pitchSlider: HTMLInputElement;
+    private currentAudioManager: AudioManager;
 
-export class AudioControls extends Component {
-    protected static _instance: AudioControls;
-    private lastTempoUpdate: number;
-    private isProcessingTempoChange: boolean;
-    private eventBus: EventBus;
-    private updateInterval: number | null;
-    private startButton: HTMLElement | null;
-    private stopButton: HTMLElement | null;
-    private touchStartY: number | null;
-    private lastTouchY: number | null;
-    private keyboardHelpTimeout: number | null;
-    private volumeBar: HTMLElement | null;
-    private pitchBar: HTMLElement | null;
-    private volumeValue: HTMLElement | null;
-    private pitchValue: HTMLElement | null;
-    private isInitializing: boolean;
-    private isStoppingAudio: boolean;
-
-    protected constructor() {
-        super();
-        this.lastTempoUpdate = 0;
-        this.isProcessingTempoChange = false;
-        this.eventBus = EventBus.getInstance();
-        this.updateInterval = null;
-        this.startButton = null;
-        this.stopButton = null;
-        this.touchStartY = null;
-        this.lastTouchY = null;
-        this.keyboardHelpTimeout = null;
-        this.volumeBar = null;
-        this.pitchBar = null;
-        this.volumeValue = null;
-        this.pitchValue = null;
-        this.isInitializing = false;
-        this.isStoppingAudio = false;
-    }
-
-    static override getInstance(): AudioControls {
-        if (!AudioControls._instance) {
-            AudioControls._instance = new AudioControls();
-        }
-        return AudioControls._instance;
-    }
-
-    protected async initializeComponent(): Promise<void> {
-        console.log('Initializing AudioControls...');
+    constructor(private audioManager: AudioManager, private eventBus: EventBus) {
+        this.currentAudioManager = audioManager;
         
-        this.setupButtons();
-        this.setupControls();
-        this.setupPatternShortcuts();
+        // Create container
+        this.container = document.createElement('div');
+        this.container.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        `;
+
+        // Create play button
+        this.playButton = document.createElement('button');
+        this.playButton.style.cssText = `
+            width: 100%;
+            height: 48px;
+            background: rgba(33, 150, 243, 0.1);
+            border: 1px solid rgba(33, 150, 243, 0.2);
+            border-radius: 8px;
+            color: #2196F3;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease-out;
+            outline: none;
+        `;
+        this.playButton.innerHTML = `
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none"/>
+            </svg>
+            <span>Start Audio</span>
+        `;
+        this.playButton.onmouseover = () => {
+            this.playButton.style.background = 'rgba(33, 150, 243, 0.2)';
+            this.playButton.style.borderColor = 'rgba(33, 150, 243, 0.3)';
+        };
+        this.playButton.onmouseout = () => {
+            this.playButton.style.background = 'rgba(33, 150, 243, 0.1)';
+            this.playButton.style.borderColor = 'rgba(33, 150, 243, 0.2)';
+        };
+        this.playButton.onfocus = () => {
+            this.playButton.style.boxShadow = '0 0 0 2px rgba(33, 150, 243, 0.3)';
+        };
+        this.playButton.onblur = () => {
+            this.playButton.style.boxShadow = 'none';
+        };
+
+        // Create volume control
+        const volumeContainer = document.createElement('div');
+        volumeContainer.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        `;
+        const volumeLabel = document.createElement('label');
+        volumeLabel.style.cssText = `
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        `;
+        volumeLabel.innerHTML = `
+            <span>Volume</span>
+            <span style="color: #2196F3; font-family: monospace;">50%</span>
+        `;
+        this.volumeSlider = document.createElement('input');
+        this.volumeSlider.type = 'range';
+        this.volumeSlider.min = '0';
+        this.volumeSlider.max = '100';
+        this.volumeSlider.value = '50';
+        this.volumeSlider.style.cssText = `
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        `;
+        volumeContainer.appendChild(volumeLabel);
+        volumeContainer.appendChild(this.volumeSlider);
+
+        // Create pitch control
+        const pitchContainer = document.createElement('div');
+        pitchContainer.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        `;
+        const pitchLabel = document.createElement('label');
+        pitchLabel.style.cssText = `
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        `;
+        pitchLabel.innerHTML = `
+            <span>Pitch</span>
+            <span style="color: #2196F3; font-family: monospace;">1.00x</span>
+        `;
+        this.pitchSlider = document.createElement('input');
+        this.pitchSlider.type = 'range';
+        this.pitchSlider.min = '0';
+        this.pitchSlider.max = '100';
+        this.pitchSlider.value = '50';
+        this.pitchSlider.style.cssText = `
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        `;
+        pitchContainer.appendChild(pitchLabel);
+        pitchContainer.appendChild(this.pitchSlider);
+
+        // Add components to container
+        this.container.appendChild(this.playButton);
+        this.container.appendChild(volumeContainer);
+        this.container.appendChild(pitchContainer);
+
+        // Set up event listeners
         this.setupEventListeners();
-        this.setupHelpButton();
-        this.startControlUpdates();
-        
-        // Listen for tab changes
-        const controlsTab = document.querySelector('[data-tab="controls"]');
-        if (controlsTab) {
-            controlsTab.addEventListener('click', () => {
-                console.log('Controls tab clicked, caching elements...');
-                // Use setTimeout to ensure DOM is updated
-                setTimeout(() => {
-                    this.cacheControlElements();
-                    // Initialize values if audio is playing
-                    if (audioManager.isInitialized() && audioManager.isPlaying) {
-                        this.initializeControlValues();
-                    }
-                }, 0);
-            });
-        }
-        
-        console.log('AudioControls initialized successfully');
-    }
-
-    private cacheControlElements(): void {
-        console.log('Caching control elements...');
-        this.volumeBar = document.querySelector('.volume-bar');
-        this.pitchBar = document.querySelector('.pitch-bar');
-        this.volumeValue = document.querySelector('.control-item.volume .value');
-        this.pitchValue = document.querySelector('.control-item.pitch .value');
-        
-        if (!this.volumeBar || !this.pitchBar || !this.volumeValue || !this.pitchValue) {
-            console.warn('Some control elements not found:', {
-                volumeBar: !!this.volumeBar,
-                pitchBar: !!this.pitchBar,
-                volumeValue: !!this.volumeValue,
-                pitchValue: !!this.pitchValue
-            });
-        }
-    }
-
-    private setupHelpButton(): void {
-        const helpButton = document.querySelector('.help-button');
-        const helpPanel = document.querySelector('.keyboard-help');
-
-        if (helpButton && helpPanel) {
-            helpButton.addEventListener('click', () => {
-                helpPanel.classList.toggle('hidden');
-            });
-
-            // Close help panel when clicking outside
-            document.addEventListener('click', (e) => {
-                if (!helpButton.contains(e.target as Node) && !helpPanel.contains(e.target as Node)) {
-                    helpPanel.classList.add('hidden');
-                }
-            });
-        }
     }
 
     private setupEventListeners(): void {
-        this.eventBus.on('audio:initialized', async ({ success }) => {
-            if (success) {
-                console.log('Audio initialized successfully');
-                // Only start playback if context is running
-                if (audioManager.context?.state === 'running') {
-                    console.log('Context running, starting playback...');
-                    this.eventBus.emit({ type: 'audio:start' });
-                } else {
-                    console.log('Context not running, updating button state...');
-                    this.updateButtonState();
-                }
+        // Play button
+        this.playButton.onclick = () => {
+            if (this.currentAudioManager.isPlaying) {
+                this.currentAudioManager.stop();
             } else {
-                console.error('Audio initialization failed');
-                this.updateButtonState();
-            }
-            this.isInitializing = false;
-        });
-
-        this.eventBus.on('audio:error', ({ error }) => {
-            console.error('Audio error:', error);
-            this.updateButtonState();
-            this.isInitializing = false;
-            this.isStoppingAudio = false;
-        });
-
-        this.eventBus.on('audio:stop', async () => {
-            if (this.isStoppingAudio) {
-                console.log('Stop operation already in progress');
-                return;
-            }
-
-            this.isStoppingAudio = true;
-            try {
-                console.log('Stopping audio playback...');
-                await audioManager.stop();
-                // Force a small delay to ensure cleanup is complete
-                await new Promise(resolve => setTimeout(resolve, 200));
-                this.updateButtonState();
-            } catch (error) {
-                console.error('Error stopping audio:', error);
-                this.eventBus.emit({ 
-                    type: 'audio:error', 
-                    error: error instanceof Error ? error : new Error('Unknown error stopping audio')
-                });
-            } finally {
-                this.isStoppingAudio = false;
-            }
-        });
-
-        this.eventBus.on('audio:start', async () => {
-            try {
-                console.log('Starting audio playback...');
-                await audioManager.start();
-                this.updateButtonState();
-                // Initialize control values when audio starts
-                this.initializeControlValues();
-            } catch (error) {
-                console.error('Error starting audio:', error);
-                this.eventBus.emit({ 
-                    type: 'audio:error', 
-                    error: error instanceof Error ? error : new Error('Unknown error starting audio')
-                });
-            }
-        });
-
-        // Add listeners for stopped and started events
-        this.eventBus.on('audio:stopped', () => {
-            console.log('Audio stopped event received');
-            this.updateButtonState();
-        });
-
-        this.eventBus.on('audio:started', () => {
-            console.log('Audio started event received');
-            this.updateButtonState();
-        });
-    }
-
-    private initializeControlValues(): void {
-        if (!audioManager.isInitialized()) return;
-
-        // Cache elements if not already cached
-        if (!this.volumeBar || !this.pitchBar || !this.volumeValue || !this.pitchValue) {
-            this.cacheControlElements();
-        }
-
-        // Initialize volume control
-        const volume = sceneManager.getCurrentVolume();
-        this.updateVolumeUI(volume);
-
-        // Initialize pitch control
-        const pitch = sceneManager.getCurrentPitch();
-        this.updatePitchUI(pitch);
-    }
-
-    private updateButtonState(): void {
-        if (!this.startButton || !this.stopButton) {
-            this.startButton = document.getElementById('startButton');
-            this.stopButton = document.getElementById('stopButton');
-            if (!this.startButton || !this.stopButton) return;
-        }
-
-        const isInitialized = audioManager.isInitialized();
-        const isPlaying = audioManager.isPlaying;
-
-        console.log('Updating button state:', { isInitialized, isPlaying });
-
-        if (!isInitialized || !isPlaying) {
-            this.stopButton.classList.add('hidden');
-            this.startButton.classList.remove('hidden');
-            this.startButton.textContent = isInitialized ? 'Start Audio' : 'Initialize Audio System';
-        } else {
-            this.startButton.classList.add('hidden');
-            this.stopButton.classList.remove('hidden');
-        }
-    }
-
-    private setupButtons(): void {
-        this.startButton = document.getElementById('startButton');
-        this.stopButton = document.getElementById('stopButton');
-
-        const handleStart = async (): Promise<void> => {
-            if (this.isInitializing || this.isStoppingAudio) {
-                console.log('Operation in progress');
-                return;
-            }
-
-            try {
-                if (!audioManager.isInitialized()) {
-                    console.log('Initializing audio system...');
-                    this.isInitializing = true;
-                    const success = await sceneManager.initializeAudioForCurrentScene();
-                    if (success) {
-                        // Ensure audio context is resumed before proceeding
-                        if (audioManager.context) {
-                            await audioManager.context.resume();
-                            this.eventBus.emit({ type: 'audio:initialized', success: true });
-                        }
-                    } else {
-                        throw new Error('Failed to initialize audio');
-                    }
-                } else if (audioManager.context?.state === 'suspended') {
-                    // If initialized but suspended, resume context and start
-                    await audioManager.context.resume();
-                    this.eventBus.emit({ type: 'audio:start' });
-                } else {
-                    // Context is running, just start audio
-                    this.eventBus.emit({ type: 'audio:start' });
-                }
-            } catch (error) {
-                console.error('Error initializing/starting audio:', error);
-                this.eventBus.emit({ 
-                    type: 'audio:error', 
-                    error: error instanceof Error ? error : new Error('Unknown error initializing audio')
-                });
-                this.isInitializing = false;
+                this.currentAudioManager.start();
             }
         };
 
-        const handleStop = async (): Promise<void> => {
-            if (this.isInitializing || this.isStoppingAudio) {
-                console.log('Cannot stop while operation in progress');
-                return;
-            }
-
-            console.log('Stopping audio system...');
-            try {
-                this.eventBus.emit({ type: 'audio:stop' });
-            } catch (error) {
-                console.error('Error stopping audio:', error);
-                this.eventBus.emit({ 
-                    type: 'audio:error', 
-                    error: error instanceof Error ? error : new Error('Unknown error stopping audio')
-                });
-            }
+        // Volume slider
+        this.volumeSlider.oninput = (e) => {
+            const value = (e.target as HTMLInputElement).value;
+            const volume = parseInt(value) / 100;
+            this.currentAudioManager.setVolume(volume);
         };
 
-        if (this.startButton) {
-            // Mouse/Touch events for start button
-            this.startButton.addEventListener('click', handleStart);
-            this.startButton.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                handleStart();
-            });
-        }
+        // Pitch slider
+        this.pitchSlider.oninput = (e) => {
+            const value = (e.target as HTMLInputElement).value;
+            const pitch = (parseInt(value) / 50) * 2; // Map 0-100 to 0-2
+            this.currentAudioManager.setFrequency(440 * pitch);
+        };
 
-        if (this.stopButton) {
-            // Mouse/Touch events for stop button
-            this.stopButton.addEventListener('click', handleStop);
-            this.stopButton.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                handleStop();
-            });
-        }
+        // Listen for audio state changes
+        this.eventBus.on('audio:state_changed', (event) => {
+            // Update play button
+            this.updatePlayButton(event.isPlaying);
 
-        // Keyboard controls for start/stop
-        document.addEventListener('keydown', (e: KeyboardEvent) => {
-            if (!audioManager.isInitialized()) return;
+            // Update volume slider
+            const volumeValue = Math.round(event.metrics.volume * 100);
+            this.volumeSlider.value = volumeValue.toString();
+            const volumeLabel = this.volumeSlider.previousElementSibling;
+            if (volumeLabel) {
+                const valueSpan = volumeLabel.querySelector('span:last-child');
+                if (valueSpan) {
+                    valueSpan.textContent = `${volumeValue}%`;
+                }
+            }
 
-            if (e.code === 'Space') {
-                e.preventDefault();
-                if (audioManager.isPlaying) {
-                    handleStop();
-                } else {
-                    handleStart();
+            // Update pitch slider
+            const normalizedPitch = event.metrics.frequency / 440;
+            const pitchValue = Math.round((normalizedPitch * 50));
+            this.pitchSlider.value = pitchValue.toString();
+            const pitchLabel = this.pitchSlider.previousElementSibling;
+            if (pitchLabel) {
+                const valueSpan = pitchLabel.querySelector('span:last-child');
+                if (valueSpan) {
+                    valueSpan.textContent = `${normalizedPitch.toFixed(2)}x`;
                 }
             }
         });
 
-        this.updateButtonState();
-    }
-
-    private setupControls(): void {
-        // Mouse wheel control
-        document.addEventListener('wheel', (e: WheelEvent) => {
-            this.handleControlChange({
-                deltaY: e.deltaY,
-                preventDefault: () => e.preventDefault(),
-                clientX: e.clientX
-            });
-        }, { passive: false });
-
-        // Touch controls
-        document.addEventListener('touchstart', (e: TouchEvent) => {
-            const touch = e.touches[0];
-            this.touchStartY = touch.clientY;
-            this.lastTouchY = touch.clientY;
-        });
-
-        document.addEventListener('touchmove', (e: TouchEvent) => {
-            if (this.touchStartY === null || this.lastTouchY === null) return;
-            
-            const touch = e.touches[0];
-            const deltaY = this.lastTouchY - touch.clientY;
-            this.lastTouchY = touch.clientY;
-
-            this.handleControlChange({
-                deltaY,
-                preventDefault: () => e.preventDefault(),
-                clientX: touch.clientX
-            });
-        });
-
-        document.addEventListener('touchend', () => {
-            this.touchStartY = null;
-            this.lastTouchY = null;
-        });
-
-        // Keyboard controls for pitch/volume
-        document.addEventListener('keydown', (e: KeyboardEvent) => {
-            if (!audioManager.isInitialized() || !audioManager.isPlaying) {
-                console.log('Audio not ready for keyboard controls');
-                return;
-            }
-
-            const step = e.shiftKey ? 0.1 : 0.2; // Increased step sizes for more noticeable changes
-            let handled = true;
-
-            switch (e.key) {
-                case 'ArrowUp':
-                    console.log('Volume up');
-                    this.adjustVolume(step);
-                    this.showKeyboardFeedback('volume');
-                    break;
-                case 'ArrowDown':
-                    console.log('Volume down');
-                    this.adjustVolume(-step);
-                    this.showKeyboardFeedback('volume');
-                    break;
-                case 'ArrowRight':
-                    console.log('Pitch up');
-                    this.adjustPitch(step);
-                    this.showKeyboardFeedback('pitch');
-                    break;
-                case 'ArrowLeft':
-                    console.log('Pitch down');
-                    this.adjustPitch(-step);
-                    this.showKeyboardFeedback('pitch');
-                    break;
-                default:
-                    handled = false;
-            }
-
-            if (handled) {
-                e.preventDefault();
-            }
+        // Listen for audio manager changes
+        this.eventBus.on('audio:manager_changed', (event) => {
+            this.currentAudioManager = event.manager;
+            // Update UI state based on new manager
+            this.updatePlayButton(this.currentAudioManager.isPlaying);
+            const volume = this.currentAudioManager.getCurrentVolume();
+            const frequency = this.currentAudioManager.getCurrentFrequency();
+            this.volumeSlider.value = (volume * 100).toString();
+            this.pitchSlider.value = ((frequency / 440) * 50).toString();
         });
     }
 
-    private showKeyboardFeedback(control: string): void {
-        const controlElement = document.querySelector(`.control-item.${control}`);
-        if (controlElement) {
-            controlElement.classList.add('bg-white/[0.06]');
-            if (this.keyboardHelpTimeout) {
-                clearTimeout(this.keyboardHelpTimeout);
-            }
-            this.keyboardHelpTimeout = window.setTimeout(() => {
-                controlElement.classList.remove('bg-white/[0.06]');
-            }, 200);
-        }
-    }
-
-    private handleControlChange(event: ControlEvent): void {
-        if (!audioManager.isInitialized() || !audioManager.isPlaying || this.isProcessingTempoChange) return;
-        
-        event.preventDefault();
-        
-        if (Date.now() - this.lastTempoUpdate < 50) return;
-        this.lastTempoUpdate = Date.now();
-        
-        this.isProcessingTempoChange = true;
-
-        if (sceneManager.isEnhancedMode) {
-            const delta = event.deltaY < 0 ? 5 : -5;
-            sceneManager.updateTempo(delta);
-            this.updateControlValues();
+    private updatePlayButton(isPlaying: boolean): void {
+        if (isPlaying) {
+            this.playButton.innerHTML = `
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="6" y="4" width="4" height="16" fill="currentColor" stroke="none"/>
+                    <rect x="14" y="4" width="4" height="16" fill="currentColor" stroke="none"/>
+                </svg>
+                <span>Stop Audio</span>
+            `;
         } else {
-            // Adjust pitch/volume based on mouse/touch position
-            const x = event.clientX ?? window.innerWidth / 2;
-            const isRightHalf = x > window.innerWidth / 2;
-            
-            if (isRightHalf) {
-                this.adjustPitch(event.deltaY < 0 ? 0.01 : -0.01);
-                this.showKeyboardFeedback('pitch');
-            } else {
-                this.adjustVolume(event.deltaY < 0 ? 0.01 : -0.01);
-                this.showKeyboardFeedback('volume');
-            }
-        }
-        
-        setTimeout(() => {
-            this.isProcessingTempoChange = false;
-        }, 50);
-    }
-
-    private adjustVolume(delta: number): void {
-        console.log('Adjusting volume by:', delta);
-        const currentVolume = sceneManager.getCurrentVolume();
-        const newVolume = Math.max(0, Math.min(1, currentVolume + delta));
-        console.log('New volume:', newVolume);
-        audioManager.setVolume(newVolume);
-        this.updateVolumeUI(newVolume);
-    }
-
-    private adjustPitch(delta: number): void {
-        console.log('Adjusting pitch by:', delta);
-        const currentPitch = sceneManager.getCurrentPitch();
-        const newPitch = Math.max(0.5, Math.min(2, currentPitch + delta));
-        console.log('New pitch:', newPitch);
-        audioManager.setFrequency(newPitch * 440);
-        this.updatePitchUI(newPitch);
-    }
-
-    private updateVolumeUI(volume: number): void {
-        if (!this.volumeBar || !this.volumeValue) {
-            this.cacheControlElements();
-        }
-        if (this.volumeBar) {
-            this.volumeBar.style.width = `${volume * 100}%`;
-        }
-        if (this.volumeValue) {
-            this.volumeValue.textContent = `${Math.round(volume * 100)}%`;
+            this.playButton.innerHTML = `
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none"/>
+                </svg>
+                <span>Start Audio</span>
+            `;
         }
     }
 
-    private updatePitchUI(pitch: number): void {
-        if (!this.pitchBar || !this.pitchValue) {
-            this.cacheControlElements();
-        }
-        const percentage = ((pitch - 0.5) / (2.0 - 0.5)) * 100;
-        if (this.pitchBar) {
-            this.pitchBar.style.width = `${percentage}%`;
-        }
-        if (this.pitchValue) {
-            this.pitchValue.textContent = `${pitch.toFixed(2)}x`;
-        }
+    public mount(parent: HTMLElement): void {
+        parent.appendChild(this.container);
     }
 
-    private setupPatternShortcuts(): void {
-        document.addEventListener('keydown', (e: KeyboardEvent) => {
-            if (!audioManager.isInitialized() || !audioManager.isPlaying) return;
-
-            const patternMap: Record<string, string> = {
-                'b': 'basic',
-                'B': 'basic',
-                's': 'syncopated',
-                'S': 'syncopated',
-                'c': 'complex',
-                'C': 'complex'
-            };
-
-            const pattern = patternMap[e.key];
-            if (pattern) {
-                (audioManager as IAudioManager).setPattern(pattern);
-            }
-        });
-    }
-
-    private startControlUpdates(): void {
-        if (this.updateInterval) {
-            window.clearInterval(this.updateInterval);
-        }
-
-        this.updateInterval = window.setInterval(() => {
-            if (audioManager.isInitialized() && audioManager.isPlaying) {
-                // Update volume and pitch
-                const volume = sceneManager.getCurrentVolume();
-                const pitch = sceneManager.getCurrentPitch();
-                
-                this.updateVolumeUI(volume);
-                this.updatePitchUI(pitch);
-
-                // Update tempo in enhanced mode
-                if (sceneManager.isEnhancedMode) {
-                    this.updateControlValues();
-                }
-            }
-        }, 100);
-    }
-
-    private updateControlValues(): void {
-        const controlItems = document.querySelectorAll('.control-item');
-        controlItems.forEach(item => {
-            const label = item.querySelector('.label')?.textContent?.toLowerCase();
-            const valueSpan = item.querySelector('.value');
-            const progressBar = item.querySelector('.pitch-bar, .volume-bar, .tempo-bar');
-            
-            if (!label || !valueSpan) return;
-
-            if (sceneManager.isEnhancedMode) {
-                if (label === 'tempo' && audioManager.isInitialized()) {
-                    const tempo = sceneManager.currentTempo;
-                    valueSpan.textContent = `${tempo} BPM`;
-                    if (progressBar instanceof HTMLElement) {
-                        // Map tempo (60-180) to percentage
-                        const percentage = ((tempo - 60) / (180 - 60)) * 100;
-                        progressBar.style.width = `${percentage}%`;
-                    }
-                }
-            }
-        });
-    }
-
-    cleanup(): void {
-        if (this.updateInterval) {
-            window.clearInterval(this.updateInterval);
-            this.updateInterval = null;
-        }
-        if (this.keyboardHelpTimeout) {
-            clearTimeout(this.keyboardHelpTimeout);
-            this.keyboardHelpTimeout = null;
-        }
+    public unmount(): void {
+        this.container.remove();
     }
 }
 
-// Export singleton instance
-export const audioControls = AudioControls.getInstance();
-export default audioControls;
+export const createAudioControls = (audioManager: AudioManager, eventBus: EventBus): AudioControls => {
+    return new AudioControls(audioManager, eventBus);
+};

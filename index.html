@@ -1,110 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Visual Sync</title>
-    <link rel="icon" href="/audio-viz/favicon.ico" type="image/x-icon">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#2196F3',
-                        secondary: '#90CAF9',
-                        dark: 'rgba(20, 20, 30, 0.95)',
-                    },
-                },
-            },
-        }
-    </script>
-    <!-- Core Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-    
-    <!-- Main Entry Point -->
-  <script type="module" crossorigin src="/audio-viz/assets/index-Bk0p8K3J.js"></script>
-  <link rel="stylesheet" crossorigin href="/audio-viz/assets/index-CLo_kBZH.css">
+    <title>Audio Visualizer</title>
 </head>
-<body class="m-0 p-0 bg-black text-white font-sans overflow-hidden">
-    <div id="app" class="w-screen h-screen relative">
-        <main id="canvas-container" class="w-full h-full"></main>
-
-        <!-- Help Button -->
-        <div class="help-container fixed top-4 right-4 z-50">
-            <button class="help-button bg-primary hover:bg-primary/80 text-white rounded-full w-8 h-8 flex items-center justify-center text-lg transition-all duration-200">?</button>
-            
-            <!-- Help Panel -->
-            <div class="keyboard-help hidden bg-dark/95 backdrop-blur-sm rounded-lg p-4 shadow-lg border border-white/10 text-sm absolute right-0 top-10 w-64">
-                <div class="help-content space-y-4">
-                    <div>
-                        <h3 class="text-primary font-semibold mb-2">Keyboard Controls:</h3>
-                        <ul class="space-y-1 text-white/90">
-                            <li class="flex items-center gap-2">
-                                <span class="bg-white/10 px-2 py-0.5 rounded">Space</span>
-                                <span>Start/Stop Audio</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <span class="bg-white/10 px-2 py-0.5 rounded">↑/↓</span>
-                                <span>Volume Control</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <span class="bg-white/10 px-2 py-0.5 rounded">←/→</span>
-                                <span>Pitch Control</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <span class="bg-white/10 px-2 py-0.5 rounded">Shift</span>
-                                <span>Hold for Fine Control</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <span class="bg-white/10 px-2 py-0.5 rounded">M</span>
-                                <span>Toggle Menu</span>
-                            </li>
-                        </ul>
-                    </div>
-                    <div>
-                        <h3 class="text-primary font-semibold mb-2">Touch Controls:</h3>
-                        <ul class="space-y-1 text-white/90">
-                            <li class="flex items-center gap-2">
-                                <span>Left Side</span>
-                                <span class="bg-white/10 px-2 py-0.5 rounded">Volume</span>
-                            </li>
-                            <li class="flex items-center gap-2">
-                                <span>Right Side</span>
-                                <span class="bg-white/10 px-2 py-0.5 rounded">Pitch</span>
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal System -->
-        <div id="modalOverlay" class="modal-overlay fixed inset-0 bg-black/85 flex justify-center items-center z-[1000] opacity-0 pointer-events-none transition-all duration-300 backdrop-blur-sm">
-            <div class="modal bg-[#1a1a2e] p-6 rounded-xl max-w-[800px] w-[90%] max-h-[90vh] overflow-y-auto transform translate-y-5 transition-all duration-300 shadow-xl border border-white/10">
-                <div class="modal-header flex justify-between items-center mb-5 pb-4 border-b border-white/10">
-                    <h2 id="modalTitle" class="text-secondary text-2xl font-semibold m-0">Sample Generator</h2>
-                    <button class="modal-close bg-transparent border-none text-secondary text-2xl cursor-pointer p-2 transition-all duration-200 rounded-full w-9 h-9 flex items-center justify-center hover:bg-white/10 hover:text-white">&times;</button>
-                </div>
-                <div id="modalContent">
-                    <!-- Sample Generator Content -->
-                    <div id="sampleGeneratorTool" class="tool-container bg-white/[0.03] p-5 rounded-lg mb-5 border border-white/5">
-                        <p>Generate audio samples for the tracker:</p>
-                        <button id="generateBtn" class="primary-btn block w-full bg-gradient-to-r from-primary to-primary/80 text-white border-none py-3 px-6 rounded-md cursor-pointer text-base font-medium transition-all duration-200 shadow-sm hover:translate-y-[-1px] hover:shadow-lg">Generate Samples</button>
-                        <div id="status" class="hidden mt-5 p-3 rounded-md font-medium"></div>
-
-                        <div class="sample-list mt-5 p-4 bg-white/[0.02] rounded-lg border border-white/5">
-                            <h3>Samples to be generated:</h3>
-                            <div class="sample-item my-2 p-3 bg-white/[0.03] rounded-md transition-all duration-200 border border-white/5 flex items-center gap-2.5">kick.wav - Kick drum (60 Hz)</div>
-                            <div class="sample-item my-2 p-3 bg-white/[0.03] rounded-md transition-all duration-200 border border-white/5 flex items-center gap-2.5">snare.wav - Snare drum (200 Hz)</div>
-                            <div class="sample-item my-2 p-3 bg-white/[0.03] rounded-md transition-all duration-200 border border-white/5 flex items-center gap-2.5">hihat.wav - Hi-hat (1000 Hz)</div>
-                            <div class="sample-item my-2 p-3 bg-white/[0.03] rounded-md transition-all duration-200 border border-white/5 flex items-center gap-2.5">bass.wav - Bass synth (50 Hz)</div>
-                            <div class="sample-item my-2 p-3 bg-white/[0.03] rounded-md transition-all duration-200 border border-white/5 flex items-center gap-2.5">lead.wav - Lead synth (440 Hz)</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+<body class="m-0 p-0 overflow-hidden bg-dark h-full">
+    <!-- Canvas container with touch control through CSS -->
+    <div id="canvas-container" class="fixed inset-0 w-screen h-screen z-0 cursor-crosshair touch-none select-none"></div>
+    <script type="module" src="/src/index.ts"></script>
 </body>
 </html>

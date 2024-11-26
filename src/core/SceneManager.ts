@@ -1,281 +1,163 @@
-import { Scene } from './Scene';
-import { audioManager } from './audio';
-import { EventBus } from './EventBus';
-import type { SceneName, AudioMode, ISceneManager } from '../types/scene';
-import { SCENES, SCENE_CONFIG } from '../types/scene';
-import type { SceneSwitchEvent } from '../types/events';
+import type p5 from 'p5';
+import type { Scene } from './Scene';
+import type { EventBus } from './EventBus';
+import type { SceneName } from '../types/scene';
+import { SCENES } from '../types/scene';
 import type { IAudioManager } from '../types/audio';
+import { Beat } from '../scenes/Beat';
 
-// Utility function for delays
-const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+export class SceneManager {
+    private scenes: Map<SceneName, Scene> = new Map();
+    private currentScene: Scene | null = null;
+    private currentSceneName: SceneName | null = null;
+    private currentAudioManager: IAudioManager | null = null;
 
-export class SceneManager implements ISceneManager {
-    scenes: Map<SceneName, Scene>;
-    currentScene: SceneName | null;
-    defaultScene: SceneName | null;
-    currentTempo: number;
-    lastTempoUpdate: number;
-    tempoUpdateThrottle: number;
-    isTransitioning: boolean;
-    currentAudioMode: AudioMode | null;
-    private eventBus: EventBus;
-
-    constructor() {
-        this.scenes = new Map();
-        this.currentScene = null;
-        this.defaultScene = SCENES.STICK_FIGURES; // Set default scene explicitly
-        this.currentTempo = 120;
-        this.lastTempoUpdate = 0;
-        this.tempoUpdateThrottle = 50;
-        this.isTransitioning = false;
-        this.currentAudioMode = null;
-        this.eventBus = EventBus.getInstance();
-        
+    constructor(private eventBus: EventBus) {
         // Listen for scene switch events
-        this.eventBus.on('scene:switch', async (event: SceneSwitchEvent) => {
-            console.log('Scene switch event received:', event.sceneId);
-            const success = await this.switchToScene(event.sceneId);
-            if (success) {
-                this.eventBus.emit({ type: 'scene:switched', to: event.sceneId });
+        this.eventBus.on('scene:switch', async (event) => {
+            try {
+                await this.switchScene(event.sceneId as SceneName);
+            } catch (error) {
+                console.error(`[SceneManager] Error switching scene:`, error);
+                this.eventBus.emit({
+                    type: 'scene:error',
+                    error: error as Error,
+                    sceneName: event.sceneId
+                });
             }
         });
     }
 
-    get isPlaying(): boolean {
-        return audioManager.isPlaying;
+    public getEventBus(): EventBus {
+        return this.eventBus;
     }
 
-    get isEnhancedMode(): boolean {
-        if (!this.currentScene) return false;
-        return SCENE_CONFIG[this.currentScene].audioMode === 'tracker';
-    }
-
-    private getAudioModeForScene(sceneName: SceneName): AudioMode {
-        return SCENE_CONFIG[sceneName].audioMode;
-    }
-
-    registerScene(name: SceneName, scene: Scene): void {
-        if (!(scene instanceof Scene)) {
-            throw new Error('Scene must extend the Scene base class');
-        }
-        scene.id = name;
-        this.scenes.set(name, scene);
-    }
-
-    private async initializeAudio(mode: AudioMode): Promise<boolean> {
+    public async initialize(): Promise<void> {
+        console.log('[SceneManager] Initializing...');
+        
         try {
-            // If already initialized in correct mode, do nothing
-            if (this.currentAudioMode === mode && audioManager.isInitialized()) {
-                return true;
+            // Set default scene
+            const defaultScene = this.scenes.get(SCENES.STICK_FIGURES);
+            if (defaultScene) {
+                await this.switchScene(SCENES.STICK_FIGURES);
             }
 
-            // Cleanup existing audio if mode is different
-            if (this.currentAudioMode !== mode) {
-                await this.cleanupAudio();
-            }
-
-            // Initialize audio manager with the correct mode
-            const success = await (audioManager as IAudioManager).initializeWithMode(mode);
-            if (!success) {
-                throw new Error('Failed to initialize audio manager');
-            }
-
-            this.currentAudioMode = mode;
-
-            if (mode === 'tracker') {
-                audioManager.setTempo(this.currentTempo);
-            }
-
-            this.updateUI(() => window.uiManager?.resetAudioButton());
-            return true;
+            console.log('[SceneManager] Initialized successfully');
         } catch (error) {
-            console.error('Error initializing audio:', error);
-            return false;
+            console.error('[SceneManager] Error initializing:', error);
+            this.eventBus.emit({
+                type: 'scene:error',
+                error: error as Error,
+                sceneName: 'initialization'
+            });
+            throw error;
         }
     }
 
-    private async cleanupAudio(): Promise<void> {
-        if (audioManager.isInitialized()) {
-            if (audioManager.isPlaying) {
-                this.eventBus.emit({ type: 'audio:stop' });
-            }
-            await audioManager.cleanup();
-            this.currentAudioMode = null;
-            this.updateUI(() => window.uiManager?.resetAudioButton());
+    public registerScene(name: SceneName, scene: Scene): void {
+        if (this.scenes.has(name)) {
+            console.warn(`[SceneManager] Scene ${name} already registered`);
+            return;
         }
+
+        this.scenes.set(name, scene);
+        console.log(`[SceneManager] Registered scene: ${name}`);
     }
 
-    startAudio(): void {
-        this.validateAudioState();
-        this.eventBus.emit({ type: 'audio:start' });
-        this.updateUI(() => window.uiManager?.resetAudioButton());
-    }
-
-    stopAudio(): void {
-        this.validateAudioState();
-        this.eventBus.emit({ type: 'audio:stop' });
-        this.updateUI(() => window.uiManager?.resetAudioButton());
-    }
-
-    private validateAudioState(): void {
-        if (!this.isAudioInitialized()) {
-            throw new Error('Audio not initialized');
-        }
-        if (this.isTransitioning) {
-            throw new Error('Cannot modify audio during scene transition');
-        }
-    }
-
-    private async cleanupCurrentScene(): Promise<void> {
-        if (this.currentScene && this.scenes.get(this.currentScene)?.cleanup) {
-            await this.scenes.get(this.currentScene)?.cleanup();
-            await delay(200);
-        }
-    }
-
-    private async initializeNewScene(name: SceneName): Promise<void> {
-        const scene = this.scenes.get(name);
-        if (!scene) {
-            throw new Error(`Scene ${name} not found`);
-        }
-
-        const setupSuccess = await scene.setup();
-        if (!setupSuccess) {
-            throw new Error('Scene setup failed');
-        }
-
-        await delay(200);
-    }
-
-    async switchToScene(name: SceneName): Promise<boolean> {
-        if (this.isTransitioning || !this.scenes.has(name)) {
-            return false;
-        }
-
+    public async switchScene(name: SceneName): Promise<void> {
         try {
-            this.isTransitioning = true;
-            console.log(`Switching to scene: ${SCENE_CONFIG[name].name}`);
-
-            // Get the audio mode for the new scene
-            const newMode = this.getAudioModeForScene(name);
-
-            // If audio is initialized and playing, and mode is changing, stop audio
-            if (audioManager.isInitialized() && audioManager.isPlaying && this.currentAudioMode !== newMode) {
-                await this.cleanupAudio();
+            console.log(`[SceneManager] Switching to scene: ${name}`);
+            const scene = this.scenes.get(name);
+            if (!scene) {
+                throw new Error(`Scene ${name} not found`);
             }
 
-            await this.cleanupCurrentScene();
-            this.currentScene = name;
-            await this.initializeNewScene(name);
-
-            // Initialize audio with the new mode
-            await this.initializeAudio(newMode);
-
-            // Restart audio if it was playing before
-            if (audioManager.isPlaying) {
-                this.startAudio();
+            // Clean up current scene if exists
+            if (this.currentScene) {
+                this.currentScene.cleanup();
             }
 
-            this.updateUI(() => {
-                window.uiManager?.updateSceneButtons(name);
-                window.uiManager?.updateControlsForScene(name);
-                window.uiManager?.resetAudioButton();
+            // Set and initialize new scene
+            this.currentScene = scene;
+            this.currentSceneName = name;
+            await scene.initialize();
+
+            // Update current audio manager
+            if (scene instanceof Beat) {
+                this.currentAudioManager = scene.audioManager;
+            } else {
+                this.currentAudioManager = window.audioManager;
+            }
+
+            // Notify scene switch
+            this.eventBus.emit({
+                type: 'scene:switched',
+                to: name
             });
 
-            return true;
+            // Notify scene ready
+            this.eventBus.emit({
+                type: 'scene:ready',
+                sceneName: name
+            });
+
+            // Emit audio manager change event
+            this.eventBus.emit({
+                type: 'audio:manager_changed',
+                manager: this.currentAudioManager
+            });
+
+            console.log(`[SceneManager] Successfully switched to scene: ${name}`);
         } catch (error) {
-            console.error('Error switching scene:', error);
-            this.updateUI(() => window.uiManager?.resetAudioButton());
-            return false;
-        } finally {
-            this.isTransitioning = false;
+            console.error(`[SceneManager] Error switching to scene ${name}:`, error);
+            this.eventBus.emit({
+                type: 'scene:error',
+                error: error as Error,
+                sceneName: name
+            });
+            throw error;
         }
     }
 
-    private updateUI(callback: () => void): void {
-        if (window.uiManager) {
-            callback();
+    public draw(p: p5): void {
+        if (this.currentScene && this.currentAudioManager) {
+            this.currentScene.draw(p);
+
+            // Update scene with current audio state
+            const volume = this.currentAudioManager.getCurrentVolume();
+            const frequency = this.currentAudioManager.getCurrentFrequency();
+            this.currentScene.handleAudio(volume, frequency);
         }
     }
 
-    private isAudioInitialized(): boolean {
-        return audioManager.isInitialized();
-    }
-
-    draw(): void {
-        if (this.isTransitioning) return;
-
-        const scene = this.getCurrentScene();
-        if (!scene?.draw) return;
-
-        try {
-            if (this.currentAudioMode === 'tracker') {
-                scene.draw();
-            } else {
-                const amplitude = audioManager.getAmplitude() || 0;
-                const frequency = audioManager.getFrequency() || 440;
-                scene.draw(amplitude, frequency);
-            }
-        } catch (error) {
-            console.error('Error in scene draw:', error);
+    public handleInteraction(x: number, y: number, width: number, height: number): void {
+        if (this.currentScene) {
+            this.currentScene.handleInteraction(x, y, width, height);
         }
     }
 
-    private getCurrentScene(): Scene | undefined {
-        return this.currentScene ? this.scenes.get(this.currentScene) : undefined;
-    }
-
-    windowResized(): void {
-        if (!this.isTransitioning) {
-            this.getCurrentScene()?.windowResized?.();
+    public handleResize(): void {
+        if (this.currentScene) {
+            this.currentScene.handleResize();
         }
     }
 
-    updateTempo(delta: number): void {
-        if (this.isTransitioning || this.currentAudioMode !== 'tracker') return;
+    public getCurrentScene(): Scene | null {
+        return this.currentScene;
+    }
 
-        const now = Date.now();
-        if (now - this.lastTempoUpdate < this.tempoUpdateThrottle) return;
-        
-        this.lastTempoUpdate = now;
-        const newTempo = Math.max(60, Math.min(200, this.currentTempo + delta));
-        
-        if (newTempo !== this.currentTempo) {
-            this.currentTempo = newTempo;
-            
-            if (audioManager.isInitialized()) {
-                audioManager.setTempo(this.currentTempo);
-            }
+    public getCurrentSceneName(): SceneName | null {
+        return this.currentSceneName;
+    }
+
+    public cleanup(): void {
+        if (this.currentScene) {
+            this.currentScene.cleanup();
         }
-    }
-
-    getCurrentPitch(): number {
-        if (!this.isAudioInitialized() || this.currentAudioMode === 'tracker') return 1;
-        return audioManager.getFrequency() / 440;
-    }
-
-    getCurrentVolume(): number {
-        if (!this.isAudioInitialized()) return 0;
-        // Use audioManager's getCurrentVolume instead of getAmplitude
-        return audioManager.getCurrentVolume();
-    }
-
-    async initialize(): Promise<void> {
-        if (this.defaultScene) {
-            await this.switchToScene(this.defaultScene);
-        }
-    }
-
-    async initializeAudioForCurrentScene(): Promise<boolean> {
-        if (!this.currentScene) return false;
-        const mode = this.getAudioModeForScene(this.currentScene);
-        return this.initializeAudio(mode);
+        this.scenes.clear();
     }
 }
 
-// Create and export singleton instance
-export const sceneManager = new SceneManager();
-export default sceneManager;
-
-// Assign to window for global access
-window.sceneManager = sceneManager;
+export const createSceneManager = (eventBus: EventBus): SceneManager => {
+    return new SceneManager(eventBus);
+};

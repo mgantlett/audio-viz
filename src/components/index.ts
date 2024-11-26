@@ -1,47 +1,29 @@
-import { Menu } from './Menu';
-import { Modal } from './Modal';
-import { TabSystem } from './TabSystem';
-import { AudioControls } from './AudioControls';
-import { SceneControls } from './SceneControls';
+import type { AudioManager } from '../core/audio/AudioManager';
+import type { EventBus } from '../core/EventBus';
+import { createMenu } from './Menu';
 
-// Initialize components in the correct order
-document.addEventListener('DOMContentLoaded', async () => {
-    console.log('Initializing components...');
-
+export const initializeComponents = async (audioManager: AudioManager, eventBus: EventBus): Promise<void> => {
     try {
-        // Initialize modal system first
-        console.log('Initializing Modal...');
-        await Modal.initialize();
-        
-        // Initialize menu system (which will initialize TabSystem)
-        console.log('Initializing Menu...');
-        await Menu.initialize();
-        
-        // Initialize feature-specific controls
-        console.log('Initializing AudioControls...');
-        await AudioControls.initialize();
+        // Wait for DOM to be ready
+        if (document.readyState === 'loading') {
+            await new Promise<void>(resolve => {
+                document.addEventListener('DOMContentLoaded', () => resolve());
+            });
+        }
 
-        console.log('Initializing SceneControls...');
-        await SceneControls.initialize();
+        // Wait for #app element to be available
+        while (!document.getElementById('app')) {
+            console.log('[Components] Waiting for #app element...');
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
 
-        console.log('All components initialized.');
+        // Create and initialize menu
+        const menu = createMenu(audioManager, eventBus);
+        await menu.initialize();
+        
+        console.log('[Components] Menu initialized successfully');
     } catch (error) {
-        console.error('Error initializing components:', error);
+        console.error('[Components] Error initializing components:', error);
+        throw error;
     }
-});
-
-// Export singleton instances
-export const modal = Modal.getInstance();
-export const menu = Menu.getInstance();
-export const tabSystem = TabSystem.getInstance();
-export const audioControls = AudioControls.getInstance();
-export const sceneControls = SceneControls.getInstance();
-
-// Export components
-export {
-    Menu,
-    Modal,
-    TabSystem,
-    AudioControls,
-    SceneControls
 };

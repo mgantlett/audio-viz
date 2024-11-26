@@ -1,121 +1,76 @@
-import { Manager } from './Manager';
-import { uiManager } from './UIManager';
-import { audioManager } from './AudioManager';
-import { sceneManager } from './SceneManager';
-import { eventBus } from './EventBus';
-import type { AppEvent } from '../types/events';
+import { createSceneManager, SceneManager } from './SceneManager';
+import { createKeyboardManager, KeyboardManager } from './KeyboardManager';
+import { createAudioManager, AudioManager } from './audio/AudioManager';
+import { createUIManager, UIManager } from './UIManager';
+import { EventBus } from './EventBus';
 
-export class App extends Manager {
-  private static instance: App;
+class App {
+    private sceneManager!: SceneManager;
+    private uiManager!: UIManager;
+    private keyboardManager!: KeyboardManager;
+    private audioManager!: AudioManager;
+    private eventBus: EventBus;
 
-  private constructor() {
-    super();
-    this.setupErrorHandling();
-  }
-
-  public static getInstance(): App {
-    if (!App.instance) {
-      App.instance = new App();
+    constructor() {
+        this.eventBus = EventBus.create();
     }
-    return App.instance;
-  }
 
-  protected async onInitialize(): Promise<void> {
-    try {
-      console.log('Initializing application...');
+    public async initialize(): Promise<void> {
+        console.log('[App] Initializing application...');
 
-      // Initialize managers in order
-      await this.initializeManagers();
+        try {
+            // Wait for DOM to be ready
+            if (document.readyState === 'loading') {
+                await new Promise<void>(resolve => {
+                    document.addEventListener('DOMContentLoaded', () => resolve());
+                });
+            }
 
-      // Set up global event listeners
-      this.setupEventListeners();
+            // Wait for p5 instance to be available
+            console.log('[App] Waiting for p5 instance...');
+            while (!window.p5Instance) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
 
-      console.log('Application initialized successfully');
-    } catch (error) {
-      console.error('Error initializing application:', error);
-      throw error;
+            // Wait for #app element to be available
+            while (!document.getElementById('app')) {
+                console.log('[App] Waiting for #app element...');
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            // Initialize Audio Manager
+            this.audioManager = createAudioManager(this.eventBus);
+            window.audioManager = this.audioManager;
+
+            // Initialize UI Manager first
+            console.log('[App] Initializing UI Manager...');
+            this.uiManager = createUIManager(this.eventBus, this.audioManager);
+            await this.uiManager.initialize();
+
+            // Initialize Keyboard Manager
+            console.log('[App] Initializing Keyboard Manager...');
+            this.keyboardManager = createKeyboardManager(this.eventBus);
+            await this.keyboardManager.initialize();
+
+            // Initialize Scene Manager last
+            console.log('[App] Initializing Scene Manager...');
+            this.sceneManager = createSceneManager(this.eventBus);
+            window.sceneManager = this.sceneManager;
+            await this.sceneManager.initialize();
+
+            console.log('[App] Application initialized successfully');
+        } catch (error) {
+            console.error('[App] Error initializing application:', error);
+            throw error;
+        }
     }
-  }
 
-  protected async onCleanup(): Promise<void> {
-    try {
-      console.log('Cleaning up application...');
-
-      // Stop any playing audio
-      if (audioManager.isPlaying) {
-        eventBus.emit({ type: 'audio:stop' });
-      }
-
-      console.log('Application cleanup completed');
-    } catch (error) {
-      console.error('Error during application cleanup:', error);
-      throw error;
+    public cleanup(): void {
+        this.sceneManager.cleanup();
+        this.uiManager.cleanup();
+        this.keyboardManager.cleanup();
+        this.audioManager.cleanup();
     }
-  }
-
-  private async initializeManagers(): Promise<void> {
-    try {
-      // Initialize UI first as it provides the interface
-      console.log('Initializing UI Manager...');
-      await uiManager.initialize();
-
-      // Initialize audio system
-      console.log('Initializing Audio Manager...');
-      await audioManager.initialize();
-
-      // Initialize scene manager last as it depends on both UI and audio
-      console.log('Initializing Scene Manager...');
-      await sceneManager.initialize();
-    } catch (error) {
-      console.error('Error initializing managers:', error);
-      throw error;
-    }
-  }
-
-  private setupEventListeners(): void {
-    // Listen for window resize events
-    window.addEventListener('resize', () => {
-      sceneManager.windowResized();
-    });
-
-    // Listen for visibility change to pause/resume audio
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        eventBus.emit({ type: 'audio:stop' });
-      }
-    });
-
-    // Listen for unload to clean up
-    window.addEventListener('beforeunload', () => {
-      if (audioManager.isPlaying) {
-        eventBus.emit({ type: 'audio:stop' });
-      }
-    });
-
-    // Listen for audio errors
-    eventBus.on('audio:error', (event: AppEvent & { type: 'audio:error' }) => {
-      console.error('Audio error:', event.error);
-    });
-  }
-
-  private setupErrorHandling(): void {
-    window.onerror = (message, source, lineno, colno, error) => {
-      console.error('Global error:', {
-        message,
-        source,
-        lineno,
-        colno,
-        error
-      });
-      return false;
-    };
-
-    window.onunhandledrejection = (event) => {
-      console.error('Unhandled promise rejection:', event.reason);
-    };
-  }
 }
 
-// Create and export singleton instance
-export const app = App.getInstance();
-export default app;
+export const app = new App();

@@ -1,50 +1,50 @@
-import type { AppEvent, EventHandler, IEventBus } from '../types/events';
+import type { EventType, AppEvent, EventTypeFromName } from '../types/events';
 
-export class EventBus implements IEventBus {
-    private static instance: EventBus;
-    private handlers: Map<AppEvent['type'], Set<EventHandler<any>>>;
+export class EventBus {
+    private handlers: Map<EventType, Array<(event: AppEvent) => void>> = new Map();
 
-    private constructor() {
-        this.handlers = new Map();
-    }
-
-    static getInstance(): EventBus {
-        if (!EventBus.instance) {
-            EventBus.instance = new EventBus();
-        }
-        return EventBus.instance;
-    }
-
-    on<T extends AppEvent['type']>(
-        type: T,
-        handler: EventHandler<Extract<AppEvent, { type: T }>>
-    ): void {
-        if (!this.handlers.has(type)) {
-            this.handlers.set(type, new Set());
-        }
-        this.handlers.get(type)?.add(handler);
-    }
-
-    off<T extends AppEvent['type']>(
-        type: T,
-        handler: EventHandler<Extract<AppEvent, { type: T }>>
-    ): void {
-        this.handlers.get(type)?.delete(handler);
-    }
-
-    emit<T extends AppEvent>(event: T): void {
+    public emit<T extends EventType>(event: EventTypeFromName<T>): void {
         const handlers = this.handlers.get(event.type);
         if (handlers) {
-            handlers.forEach(handler => {
-                try {
-                    handler(event);
-                } catch (error) {
-                    console.error(`Error in event handler for ${event.type}:`, error);
-                }
-            });
+            handlers.forEach(handler => handler(event));
         }
     }
-}
 
-export const eventBus = EventBus.getInstance();
-export default eventBus;
+    public on<T extends EventType>(eventType: T, handler: (event: EventTypeFromName<T>) => void): void {
+        if (!this.handlers.has(eventType)) {
+            this.handlers.set(eventType, []);
+        }
+        this.handlers.get(eventType)?.push(handler as (event: AppEvent) => void);
+    }
+
+    public once<T extends EventType>(eventType: T, handler: (event: EventTypeFromName<T>) => void): void {
+        const onceHandler = (event: EventTypeFromName<T>): void => {
+            this.off(eventType, onceHandler);
+            handler(event);
+        };
+        this.on(eventType, onceHandler);
+    }
+
+    public off<T extends EventType>(eventType: T, handler: (event: EventTypeFromName<T>) => void): void {
+        const handlers = this.handlers.get(eventType);
+        if (handlers) {
+            const index = handlers.indexOf(handler as (event: AppEvent) => void);
+            if (index !== -1) {
+                handlers.splice(index, 1);
+            }
+        }
+    }
+
+    public hasListeners(eventType: EventType): boolean {
+        const handlers = this.handlers.get(eventType);
+        return handlers !== undefined && handlers.length > 0;
+    }
+
+    public clearAll(): void {
+        this.handlers.clear();
+    }
+
+    public static create(): EventBus {
+        return new EventBus();
+    }
+}

@@ -1,57 +1,56 @@
-// Import components
+// Core components
 import { menu } from './Menu';
-import { modal } from './Modal';
-import { tabSystem } from './TabSystem';
-import { audioControls } from './AudioControls';
-import { sceneControls } from './SceneControls';
-import { sampleGenerator } from './SampleGenerator';
-import { menuTemplate, toggleButtonTemplate } from './MenuTemplate';
-import type { IScene } from '../core/SceneManager';
+import { createOscilloscope } from './Oscilloscope';
+import { createAudioControls } from './AudioControls';
+
+// Initialize components
+const initializeComponents = async (): Promise<void> => {
+    console.log('[Components] Initializing components...');
+
+    try {
+        // Wait for DOM to be fully loaded
+        await new Promise<void>(resolve => {
+            if (document.readyState === 'complete') {
+                resolve();
+            } else {
+                window.addEventListener('load', () => resolve());
+            }
+        });
+
+        // Initialize menu
+        console.log('[Components] Initializing Menu...');
+        await menu.initialize();
+        
+        // Initialize audio controls
+        console.log('[Components] Initializing AudioControls...');
+        await createAudioControls({
+            eventBus: window.eventBus,
+            audioManager: window.audioManager
+        }).initialize();
+
+        console.log('[Components] All components initialized.');
+    } catch (error) {
+        console.error('[Components] Error initializing components:', error);
+        throw error;
+    }
+};
+
+// Start initialization when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeComponents().catch(error => {
+            console.error('[Components] Fatal error during initialization:', error);
+        });
+    });
+} else {
+    initializeComponents().catch(error => {
+        console.error('[Components] Fatal error during initialization:', error);
+    });
+}
 
 // Export components
 export {
-  menu,
-  modal,
-  tabSystem,
-  audioControls,
-  sceneControls,
-  sampleGenerator,
-  menuTemplate,
-  toggleButtonTemplate
+    menu,
+    createOscilloscope,
+    createAudioControls
 };
-
-// Export types
-export type { IScene };
-
-// Initialize all components
-export async function initializeComponents(): Promise<void> {
-  console.log('Initializing components...');
-
-  try {
-    // Initialize modal system first
-    console.log('Initializing Modal...');
-    await modal.initialize();
-    
-    // Initialize menu system (which will initialize TabSystem)
-    console.log('Initializing Menu...');
-    await menu.initialize();
-    
-    // Initialize feature-specific controls
-    console.log('Initializing AudioControls...');
-    await audioControls.initialize();
-
-    console.log('Initializing SceneControls...');
-    await sceneControls.initialize();
-
-    console.log('Initializing SampleGenerator...');
-    await sampleGenerator.initialize();
-
-    console.log('All components initialized successfully');
-  } catch (error) {
-    console.error('Error initializing components:', error);
-    throw error;
-  }
-}
-
-// Export initialization function
-export { initializeComponents as initialize };

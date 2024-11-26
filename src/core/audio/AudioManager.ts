@@ -1,238 +1,162 @@
-import { BasicAudioManager } from './BasicAudioManager';
-import { EnhancedAudioManager } from './EnhancedAudioManager';
-import type { AudioMetrics } from '../../types/audio';
+import type { IAudioManager, AudioMetrics, AudioConfig, GeneratedPattern } from '../../types/audio';
+import type { EventBus } from '../EventBus';
 
-declare global {
-    interface Window {
-        enhancedAudioManager: AudioManager;
+export class AudioManager implements IAudioManager {
+    private context: AudioContext;
+    private oscillator: OscillatorNode | null = null;
+    public masterGain: GainNode;
+    public analyzer: AnalyserNode;
+    private compressor: DynamicsCompressorNode;
+    public waveformData: Float32Array;
+    private currentVolume: number = 0.5;
+    private currentFrequency: number = 440;
+    private currentPattern: GeneratedPattern | undefined;
+    public isPlaying: boolean = false;
+
+    constructor(private eventBus: EventBus) {
+        // Initialize audio context
+        this.context = new window.AudioContext();
+        console.log('[AudioManager] Audio context initialized');
+
+        // Create master gain node
+        this.masterGain = this.context.createGain();
+        this.masterGain.gain.value = this.currentVolume;
+
+        // Create analyzer node
+        this.analyzer = this.context.createAnalyser();
+        this.analyzer.fftSize = 2048;
+        this.waveformData = new Float32Array(this.analyzer.frequencyBinCount);
+
+        // Create compressor node
+        this.compressor = this.context.createDynamicsCompressor();
+        this.compressor.threshold.value = -50;
+        this.compressor.knee.value = 40;
+        this.compressor.ratio.value = 12;
+        this.compressor.attack.value = 0;
+        this.compressor.release.value = 0.25;
+
+        // Connect nodes
+        this.masterGain.connect(this.compressor);
+        this.compressor.connect(this.analyzer);
+        this.analyzer.connect(this.context.destination);
     }
-}
 
-type AudioMode = 'basic' | 'enhanced';
+    public configure(config: AudioConfig): void {
+        if (config.initialVolume !== undefined) {
+            this.setVolume(config.initialVolume);
+            this.currentVolume = config.initialVolume;
+        }
 
-export class AudioManager {
-    private basicManager: BasicAudioManager;
-    private enhancedManager: EnhancedAudioManager;
-    private currentManager: BasicAudioManager | EnhancedAudioManager | null;
-    private mode: AudioMode | null;
-    private isTransitioning: boolean;
-
-    constructor() {
-        this.basicManager = new BasicAudioManager();
-        this.enhancedManager = new EnhancedAudioManager();
-        this.currentManager = null;
-        this.mode = null;
-        this.isTransitioning = false;
+        if (config.initialPattern) {
+            this.currentPattern = config.initialPattern;
+        }
     }
 
-    async initialize(mode: AudioMode = 'basic'): Promise<boolean> {
-        console.log(`Initializing audio manager in ${mode} mode`);
-        
+    public start(): void {
+        if (this.isPlaying) return;
+
         try {
-            if (this.isTransitioning) {
-                console.warn('Audio manager is already transitioning');
-                return false;
+            this.oscillator = this.context.createOscillator();
+            this.oscillator.type = 'sine';
+            this.oscillator.frequency.value = this.currentFrequency;
+            this.oscillator.connect(this.masterGain);
+            this.oscillator.start();
+            this.isPlaying = true;
+
+            // Resume audio context if suspended
+            if (this.context.state === 'suspended') {
+                this.context.resume();
             }
 
-            this.isTransitioning = true;
-
-            // If we're already in the requested mode and initialized, do nothing
-            if (this.mode === mode && this.currentManager?.isInitialized()) {
-                this.isTransitioning = false;
-                return true;
-            }
-
-            // Cleanup existing manager if it exists
-            if (this.currentManager) {
-                console.log('Cleaning up current audio manager...');
-                await this.cleanup(false); // Don't reset mode yet
-                await new Promise(resolve => setTimeout(resolve, 100)); // Wait for cleanup
-            }
-
-            // Initialize the new manager
-            console.log(`Setting up ${mode} audio manager...`);
-            this.mode = mode;
-            this.currentManager = mode === 'enhanced' ? this.enhancedManager : this.basicManager;
-            
-            // Ensure clean state before initialization
-            this.currentManager.isStarted = false;
-
-            const success = await this.currentManager.initialize();
-            if (!success) {
-                throw new Error('Failed to initialize audio manager');
-            }
-
-            // Set initial state
-            this.currentManager.isStarted = true;
-            this.isTransitioning = false;
-            return true;
+            // Emit audio state change
+            this.emitAudioStateChange();
         } catch (error) {
-            console.error('Error initializing audio manager:', error);
-            // Reset state on error
-            this.isTransitioning = false;
-            this.mode = null;
-            this.currentManager = null;
-            return false;
+            console.error('[AudioManager] Error starting audio:', error);
         }
     }
 
-    // Basic audio methods
-    setFrequency(freq: number): void {
-        if (this.mode === 'basic' && !this.isTransitioning) {
-            (this.currentManager as BasicAudioManager).setFrequency(freq);
-        }
-    }
+    public stop(): void {
+        if (!this.isPlaying) return;
 
-    setAmplitude(amp: number): void {
-        if (this.mode === 'basic' && !this.isTransitioning) {
-            (this.currentManager as BasicAudioManager).setAmplitude(amp);
-        }
-    }
-
-    getAmplitude(): number {
-        return (this.mode === 'basic' && !this.isTransitioning) ? 
-            (this.currentManager as BasicAudioManager).getAmplitude() : 0;
-    }
-
-    getFrequency(): number {
-        return (this.mode === 'basic' && !this.isTransitioning) ? 
-            (this.currentManager as BasicAudioManager).getFrequency() : 440;
-    }
-
-    mapMouseToAudio(mouseX: number, mouseY: number, width: number, height: number): void {
-        if (this.mode === 'basic' && !this.isTransitioning) {
-            (this.currentManager as BasicAudioManager).mapMouseToAudio(mouseX, mouseY, width, height);
-        }
-    }
-
-    // Enhanced audio methods
-    setTempo(tempo: number): void {
-        if (this.mode === 'enhanced' && !this.isTransitioning) {
-            (this.currentManager as EnhancedAudioManager).setTempo(tempo);
-        }
-    }
-
-    getAudioMetrics(): AudioMetrics | null {
-        return (this.mode === 'enhanced' && !this.isTransitioning) ? 
-            (this.currentManager as EnhancedAudioManager).getAudioMetrics() : null;
-    }
-
-    getWaveform(): Float32Array {
-        return (this.mode === 'enhanced' && !this.isTransitioning) ? 
-            (this.currentManager as EnhancedAudioManager).getWaveform() : new Float32Array(1024);
-    }
-
-    getCurrentPattern(): any | null {
-        return (this.mode === 'enhanced' && !this.isTransitioning) ? 
-            (this.currentManager as EnhancedAudioManager).getCurrentPattern() : null;
-    }
-
-    // Common methods
-    isInitialized(): boolean {
-        return !this.isTransitioning && this.currentManager?.isInitialized() || false;
-    }
-
-    get isStarted(): boolean {
-        return this.currentManager?.isStarted || false;
-    }
-
-    get isPlaying(): boolean {
-        return this.currentManager?.isPlaying || false;
-    }
-
-    start(): void {
         try {
-            if (!this.isInitialized()) {
-                throw new Error('Audio not initialized');
+            if (this.oscillator) {
+                this.oscillator.stop();
+                this.oscillator.disconnect();
+                this.oscillator = null;
             }
-            if (this.isTransitioning) {
-                throw new Error('Cannot start audio while transitioning');
-            }
-            if (!this.currentManager) {
-                throw new Error('No audio manager available');
-            }
-            if (this.currentManager.isPlaying) {
-                console.log('Audio already playing');
-                return;
-            }
+            this.isPlaying = false;
 
-            console.log('Starting audio playback...');
-            this.currentManager.start();
+            // Emit audio state change
+            this.emitAudioStateChange();
         } catch (error) {
-            console.error('Error starting audio:', error);
-            throw error;
+            console.error('[AudioManager] Error stopping audio:', error);
         }
     }
 
-    stop(): void {
-        try {
-            if (!this.isInitialized()) {
-                throw new Error('Audio not initialized');
-            }
-            if (this.isTransitioning) {
-                throw new Error('Cannot stop audio while transitioning');
-            }
-            if (!this.currentManager) {
-                throw new Error('No audio manager available');
-            }
-
-            console.log('Stopping audio playback...');
-            this.currentManager.stop();
-        } catch (error) {
-            console.error('Error stopping audio:', error);
-            throw error;
+    public setVolume(volume: number): void {
+        this.currentVolume = Math.max(0, Math.min(1, volume));
+        if (this.masterGain) {
+            this.masterGain.gain.value = this.currentVolume;
         }
+        // Emit audio state change
+        this.emitAudioStateChange();
     }
 
-    getVolume(): number {
-        try {
-            if (!this.isInitialized()) {
-                throw new Error('Audio not initialized');
-            }
-            if (!this.currentManager) {
-                throw new Error('No audio manager available');
-            }
-            return this.currentManager.getVolume();
-        } catch (error) {
-            console.error('Error getting volume:', error);
-            return 0;
-        }
+    public getCurrentVolume(): number {
+        return this.currentVolume;
     }
 
-    setVolume(value: number): boolean {
-        try {
-            if (!this.isInitialized()) {
-                throw new Error('Audio not initialized');
-            }
-            if (!this.currentManager) {
-                throw new Error('No audio manager available');
-            }
-            return this.currentManager.setVolume(value);
-        } catch (error) {
-            console.error('Error setting volume:', error);
-            return false;
-        }
+    public getVolume(): number {
+        return this.currentVolume;
     }
 
-    async cleanup(resetMode = true): Promise<void> {
-        try {
-            if (this.currentManager) {
-                await this.currentManager.cleanup();
-                this.currentManager = null;
-            }
-            if (resetMode) {
-                this.mode = null;
-            }
-            this.isTransitioning = false;
-        } catch (error) {
-            console.warn('Error during audio manager cleanup:', error);
-            this.isTransitioning = false;
+    public setFrequency(frequency: number): void {
+        this.currentFrequency = Math.max(20, Math.min(20000, frequency));
+        if (this.oscillator) {
+            this.oscillator.frequency.value = this.currentFrequency;
+        }
+        // Emit audio state change
+        this.emitAudioStateChange();
+    }
+
+    public getCurrentFrequency(): number {
+        return this.currentFrequency;
+    }
+
+    public getFrequency(): number {
+        return this.currentFrequency;
+    }
+
+    public getWaveform(): Float32Array {
+        this.analyzer.getFloatTimeDomainData(this.waveformData);
+        return this.waveformData;
+    }
+
+    public getMetrics(): AudioMetrics {
+        return {
+            volume: this.currentVolume,
+            frequency: this.currentFrequency,
+            waveform: this.getWaveform(),
+            pattern: this.currentPattern
+        };
+    }
+
+    private emitAudioStateChange(): void {
+        this.eventBus.emit({
+            type: 'audio:state_changed',
+            metrics: this.getMetrics(),
+            isPlaying: this.isPlaying
+        });
+    }
+
+    public cleanup(): void {
+        this.stop();
+        if (this.context.state !== 'closed') {
+            this.context.close();
         }
     }
 }
 
-// Create and export global instance
-export const audioManager = new AudioManager();
-
-// For backward compatibility with window.enhancedAudioManager
-window.enhancedAudioManager = audioManager;
+export const createAudioManager = (eventBus: EventBus): AudioManager => {
+    return new AudioManager(eventBus);
+};

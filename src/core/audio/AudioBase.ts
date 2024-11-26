@@ -1,54 +1,22 @@
-import type { IAudioManager, AudioMetrics } from '../../types/audio';
-import type { AudioMode } from '../../types/scene';
+import type { IAudioManager, AudioConfig, AudioMetrics, AudioMode, GeneratedPattern } from '../../types/audio';
+import type { EventBus } from '../EventBus';
+import type { AudioInitializedEvent, AudioErrorEvent, AudioVolumeEvent, AudioPitchEvent, AudioPatternEvent, AudioTempoEvent, AudioStartedEvent, AudioStoppedEvent } from '../../types/events';
 
-declare global {
-    interface Window {
-        webkitAudioContext?: typeof AudioContext;
-    }
-}
+export abstract class AudioBase implements IAudioManager {
+    protected initialized: boolean = false;
+    protected _isPlaying: boolean = false;
+    protected volume: number = 0.5;
+    protected _context: AudioContext | null = null;
+    protected mode: AudioMode = 'basic';
+    protected currentPattern: GeneratedPattern | undefined;
+    protected _currentTempo: number = 120;
+    protected amplitude: number = 1;
+    protected frequency: number = 440;
 
-export class AudioBase implements IAudioManager {
-    protected _context: AudioContext | null;
-    protected masterGain: GainNode | null;
-    protected compressor: DynamicsCompressorNode | null;
-    protected limiter: DynamicsCompressorNode | null;
-    protected _currentTempo: number;
-    public isStarted: boolean;
-    public isPlaying: boolean;
-    protected readonly fadeOutDuration: number;
-    private _initialized: boolean;
-    private _hasUserInteraction: boolean;
-    protected _mode: AudioMode;
+    constructor(protected eventBus: EventBus) {}
 
-    constructor() {
-        this._context = null;
-        this.masterGain = null;
-        this.compressor = null;
-        this.limiter = null;
-        this._currentTempo = 120;
-        this.isStarted = false;
-        this.isPlaying = false;
-        this.fadeOutDuration = 0.1;
-        this._initialized = false;
-        this._hasUserInteraction = false;
-        this._mode = 'oscillator';
-        
-        // Add user interaction listener to document instead of window
-        document.addEventListener('click', async () => {
-            this._hasUserInteraction = true;
-            if (this._context?.state === 'suspended') {
-                try {
-                    await this._context.resume();
-                    console.log('AudioContext resumed after user interaction');
-                    // Try to initialize again after successful resume
-                    if (!this._initialized) {
-                        await this.setupAudioContext();
-                    }
-                } catch (error) {
-                    console.error('Error resuming audio context:', error);
-                }
-            }
-        }, { once: true });
+    get isPlaying(): boolean {
+        return this._isPlaying;
     }
 
     get context(): AudioContext | null {
@@ -59,291 +27,223 @@ export class AudioBase implements IAudioManager {
         return this._currentTempo;
     }
 
-    get currentPattern(): string {
-        return '';
-    }
+    async initialize(config?: AudioConfig): Promise<void> {
+        if (this.initialized) return;
 
-    get frequency(): number {
-        return 440;
-    }
-
-    protected get mode(): AudioMode {
-        return this._mode;
-    }
-
-    protected set mode(value: AudioMode) {
-        this._mode = value;
-    }
-
-    async setupAudioContext(): Promise<boolean> {
         try {
-            console.log('Setting up AudioContext...');
+            // Create audio context
+            this._context = new AudioContext();
             
-            // Create audio context if it doesn't exist
-            if (!this._context) {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                if (!AudioContext) {
-                    throw new Error('Web Audio API not supported');
+            // Apply configuration
+            if (config) {
+                if (config.mode) {
+                    this.mode = config.mode;
                 }
-                this._context = new AudioContext();
-                console.log('New AudioContext created, state:', this._context.state);
-            }
-
-            // Try to resume the context if suspended
-            if (this._context.state === 'suspended') {
-                if (this._hasUserInteraction) {
-                    try {
-                        await this._context.resume();
-                        console.log('AudioContext resumed, new state:', this._context.state);
-                    } catch (resumeError) {
-                        console.warn('Could not resume AudioContext:', resumeError);
-                        return false;
-                    }
-                } else {
-                    console.log('Waiting for user interaction to resume AudioContext');
-                    return false;
+                if (config.initialVolume !== undefined) {
+                    this.volume = config.initialVolume;
+                    this.amplitude = config.initialVolume;
+                }
+                if (config.initialPattern) {
+                    this.currentPattern = config.initialPattern;
                 }
             }
 
-            // Setup audio chain if not already set up
-            if (!this.masterGain || !this.compressor || !this.limiter) {
-                const success = await this.setupMasterChain();
-                if (!success) {
-                    throw new Error('Failed to setup master audio chain');
-                }
-            }
-
-            // Only mark as initialized if context is running and chain is setup
-            this._initialized = this._context.state === 'running' && 
-                              this.masterGain !== null && 
-                              this.compressor !== null && 
-                              this.limiter !== null;
-
-            console.log('Audio initialization complete, initialized:', this._initialized);
-            return this._initialized;
-        } catch (error) {
-            console.error('Error in setupAudioContext:', error);
-            this._initialized = false;
-            return false;
-        }
-    }
-
-    async setupMasterChain(): Promise<boolean> {
-        try {
-            if (!this._context) {
-                throw new Error('Audio context not initialized');
-            }
-
-            // Create master gain node with lower initial volume
-            this.masterGain = this._context.createGain();
-            this.masterGain.gain.value = 0.4; // Reduced from 0.7
-
-            // Create compressor node with more aggressive settings
-            this.compressor = this._context.createDynamicsCompressor();
-            this.compressor.threshold.value = -24;  // Start compression earlier
-            this.compressor.knee.value = 12;       // Sharper knee for more precise compression
-            this.compressor.ratio.value = 16;      // More aggressive compression
-            this.compressor.attack.value = 0.002;  // Faster attack
-            this.compressor.release.value = 0.1;   // Faster release
-
-            // Create limiter (another compressor with extreme settings)
-            this.limiter = this._context.createDynamicsCompressor();
-            this.limiter.threshold.value = -6;    // Start limiting at -6dB
-            this.limiter.knee.value = 0;          // Hard knee for true limiting
-            this.limiter.ratio.value = 20;        // Very aggressive ratio
-            this.limiter.attack.value = 0.001;    // Very fast attack
-            this.limiter.release.value = 0.1;     // Fast release
-
-            // Connect nodes: masterGain -> compressor -> limiter -> destination
-            this.masterGain.connect(this.compressor);
-            this.compressor.connect(this.limiter);
-            this.limiter.connect(this._context.destination);
-
-            console.log('Master audio chain connected successfully');
-            return true;
-        } catch (error) {
-            console.error('Error setting up master chain:', error);
-            return false;
-        }
-    }
-
-    isInitialized(): boolean {
-        return this._initialized && 
-               this._context !== null && 
-               this._context.state === 'running' &&
-               this.masterGain !== null && 
-               this.compressor !== null &&
-               this.limiter !== null;
-    }
-
-    async initialize(): Promise<void> {
-        await this.setupAudioContext();
-    }
-
-    async initializeWithMode(mode: AudioMode): Promise<boolean> {
-        this._mode = mode;
-        return this.setupAudioContext();
-    }
-
-    get isEnhancedMode(): boolean {
-        return this._mode === 'tracker';
-    }
-
-    get volume(): number {
-        return this.getVolume();
-    }
-
-    setFrequency(_frequency: number): void {
-        // Implemented by child classes
-    }
-
-    setTempo(_delta: number): void {
-        // Implemented by child classes
-    }
-
-    setPattern(_pattern: string): void {
-        // Implemented by child classes
-    }
-
-    getAmplitude(): number {
-        return 0;
-    }
-
-    setAmplitude(_amplitude: number): void {
-        // Implemented by child classes
-    }
-
-    getFrequency(): number {
-        return 440;
-    }
-
-    getCurrentPitch(): number {
-        return 1;
-    }
-
-    getCurrentVolume(): number {
-        return this.getVolume();
-    }
-
-    mapMouseToAudio(_mouseX: number, _mouseY: number, _width: number, _height: number): void {
-        // Implemented by child classes
-    }
-
-    getVolume(): number {
-        try {
-            if (!this.isInitialized() || !this.masterGain) return 0;
-            // Convert back from scaled volume
-            return Math.sqrt(this.masterGain.gain.value / 0.4);
-        } catch (error) {
-            console.error('Error getting volume:', error);
-            return 0;
-        }
-    }
-
-    setVolume(value: number): void {
-        try {
-            if (!this.isInitialized() || !this.masterGain || !this._context) {
-                throw new Error('Audio not initialized');
-            }
+            // Initialize audio nodes
+            await this.setupAudioNodes();
             
-            // Clamp value between 0 and 1
-            const volume = Math.max(0, Math.min(1, value));
-            
-            // Apply volume curve for better control
-            const scaledVolume = volume * volume * 0.4; // Square curve with max 0.4
-            
-            // Smoothly transition to new volume
-            const now = this._context.currentTime;
-            this.masterGain.gain.cancelScheduledValues(now);
-            this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-            this.masterGain.gain.linearRampToValueAtTime(scaledVolume, now + 0.1);
-        } catch (error) {
-            console.error('Error setting volume:', error);
-        }
-    }
+            this.initialized = true;
 
-    start(): void {
-        if (!this._hasUserInteraction) {
-            console.warn('Cannot start audio without user interaction');
-            return;
-        }
-
-        if (!this.isInitialized()) {
-            console.warn('Audio not fully initialized, attempting to initialize...');
-            this.setupAudioContext().then(success => {
-                if (success) {
-                    this.isPlaying = true;
-                    console.log('Audio initialized and started successfully');
-                } else {
-                    console.error('Failed to initialize audio');
-                }
+            console.log('[AudioBase] Initialized with:', {
+                mode: this.mode,
+                volume: this.volume,
+                amplitude: this.amplitude,
+                frequency: this.frequency
             });
-            return;
+
+            // Emit initialized event
+            const event: AudioInitializedEvent = { type: 'audio:initialized', success: true };
+            this.eventBus.emit(event);
+        } catch (error) {
+            console.error('Error initializing audio:', error);
+            const errorEvent: AudioErrorEvent = { type: 'audio:error', error: error instanceof Error ? error : new Error('Unknown error') };
+            this.eventBus.emit(errorEvent);
+            throw error;
         }
-
-        this.isPlaying = true;
-        console.log('Audio started successfully');
     }
 
-    stop(): void {
-        if (!this.isInitialized()) {
-            console.warn('Audio not initialized');
-            return;
+    protected abstract setupAudioNodes(): Promise<void>;
+
+    abstract start(): void;
+
+    abstract stop(): void;
+
+    async resume(): Promise<void> {
+        if (this._context?.state === 'suspended') {
+            try {
+                await this._context.resume();
+                console.log('[AudioBase] AudioContext resumed');
+                if (this._isPlaying) {
+                    const event: AudioStartedEvent = { type: 'audio:started' };
+                    this.eventBus.emit(event);
+                }
+            } catch (error) {
+                console.error('[AudioBase] Error resuming AudioContext:', error);
+                const errorEvent: AudioErrorEvent = { type: 'audio:error', error: error instanceof Error ? error : new Error('Unknown error') };
+                this.eventBus.emit(errorEvent);
+                throw error;
+            }
         }
-
-        if (!this.isPlaying) {
-            console.log('Audio already stopped');
-            return;
-        }
-
-        this.isPlaying = false;
-        console.log('Audio stopped successfully');
     }
 
-    getAudioMetrics(): AudioMetrics | null {
-        return null;
-    }
+    async cleanup(closeContext: boolean = false): Promise<void> {
+        if (!this.initialized) return;
 
-    getWaveform(): Float32Array {
-        return new Float32Array(1024);
-    }
-
-    getCurrentPattern(): any | null {
-        return null;
-    }
-
-    getSpectralData(): Uint8Array {
-        return new Uint8Array(1024);
-    }
-
-    async cleanup(closeContext: boolean = true): Promise<void> {
         try {
-            if (this.masterGain) {
-                this.masterGain.disconnect();
-                this.masterGain = null;
-            }
-
-            if (this.compressor) {
-                this.compressor.disconnect();
-                this.compressor = null;
-            }
-
-            if (this.limiter) {
-                this.limiter.disconnect();
-                this.limiter = null;
-            }
-
+            await this.stop();
             if (closeContext && this._context) {
                 await this._context.close();
                 this._context = null;
             }
-
-            this.isStarted = false;
-            this.isPlaying = false;
-            this._initialized = false;
-            console.log('Audio cleanup complete');
+            this.initialized = false;
         } catch (error) {
-            console.error('Error during cleanup:', error);
+            console.error('Error cleaning up audio:', error);
+            const errorEvent: AudioErrorEvent = { type: 'audio:error', error: error instanceof Error ? error : new Error('Unknown error') };
+            this.eventBus.emit(errorEvent);
+        }
+    }
+
+    isInitialized(): boolean {
+        return this.initialized;
+    }
+
+    getVolume(): number {
+        return this.volume;
+    }
+
+    getCurrentVolume(): number {
+        return this.volume;
+    }
+
+    setVolume(volume: number): void {
+        this.volume = Math.max(0, Math.min(1, volume));
+        this.updateVolume();
+        const event: AudioVolumeEvent = { type: 'audio:volume', value: this.volume };
+        this.eventBus.emit(event);
+        console.log('[AudioBase] Volume set:', this.volume);
+    }
+
+    protected abstract updateVolume(): void;
+
+    getAudioMetrics(): AudioMetrics {
+        return {
+            volume: this.amplitude,
+            frequency: this.frequency,
+            waveform: this.getWaveformData(),
+            pattern: this.currentPattern
+        };
+    }
+
+    protected getWaveformData(): Float32Array {
+        if (!this._isPlaying) {
+            // Return flat line when not playing
+            const data = new Float32Array(128);
+            data.fill(0);
+            return data;
+        }
+
+        return this.getCurrentWaveform();
+    }
+
+    protected abstract getCurrentWaveform(): Float32Array;
+
+    setPattern(pattern: GeneratedPattern): void {
+        this.currentPattern = pattern;
+        const event: AudioPatternEvent = { 
+            type: 'audio:pattern', 
+            pattern: pattern
+        };
+        this.eventBus.emit(event);
+    }
+
+    getWaveform(): Float32Array {
+        return this.getWaveformData();
+    }
+
+    getCurrentPattern(): GeneratedPattern | null {
+        return this.currentPattern || null;
+    }
+
+    setTempo(tempo: number): void {
+        this._currentTempo = tempo;
+        const event: AudioTempoEvent = { type: 'audio:tempo', tempo };
+        this.eventBus.emit(event);
+    }
+
+    getTempo(): number {
+        return this._currentTempo;
+    }
+
+    setFrequency(freq: number): void {
+        this.frequency = freq;
+        const event: AudioPitchEvent = { type: 'audio:pitch', pitch: freq / 440 };
+        this.eventBus.emit(event);
+        console.log('[AudioBase] Frequency set:', freq, 'pitch:', freq / 440);
+    }
+
+    getCurrentFrequency(): number {
+        return this.frequency;
+    }
+
+    getFrequency(): number {
+        return this.frequency;
+    }
+
+    setAmplitude(amp: number): void {
+        this.amplitude = Math.max(0, Math.min(1, amp));
+        this.setVolume(this.amplitude);
+        console.log('[AudioBase] Amplitude set:', this.amplitude);
+    }
+
+    getAmplitude(): number {
+        return this.amplitude;
+    }
+
+    mapMouseToAudio(mouseX: number, mouseY: number, width: number, height: number): void {
+        // Map X position to frequency (pitch) using exponential mapping
+        const minFreq = 220; // A3
+        const maxFreq = 880; // A5
+        const freqScale = Math.exp(Math.log(maxFreq / minFreq) * (mouseX / width));
+        const newFreq = minFreq * freqScale;
+        
+        // Map Y position to amplitude (volume)
+        // Invert Y axis so higher = louder
+        const newAmp = 1 - (mouseY / height);
+
+        console.log('[AudioBase] Mouse mapping:', {
+            x: mouseX,
+            y: mouseY,
+            width,
+            height,
+            newFrequency: newFreq,
+            newAmplitude: newAmp
+        });
+
+        this.setFrequency(newFreq);
+        this.setAmplitude(newAmp);
+    }
+
+    protected setIsPlaying(value: boolean): void {
+        if (this._isPlaying !== value) {
+            this._isPlaying = value;
+            if (value) {
+                const event: AudioStartedEvent = { type: 'audio:started' };
+                this.eventBus.emit(event);
+                console.log('[AudioBase] Audio started');
+            } else {
+                const event: AudioStoppedEvent = { type: 'audio:stopped' };
+                this.eventBus.emit(event);
+                console.log('[AudioBase] Audio stopped');
+            }
         }
     }
 }

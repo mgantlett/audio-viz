@@ -1,4 +1,4 @@
-import type { AudioMetrics } from './audio';
+import type { GeneratedPattern } from '../core/audio/MagentaPatternGenerator';
 
 export interface Particle {
     x: number;
@@ -35,23 +35,9 @@ export interface GeometricPattern {
     orbitSpeed: number;
 }
 
-export interface SampleVisualizer {
-    data: Float32Array;
-    offset: number;
-    speed: number;
-    active: boolean;
-}
-
-export interface TrackerEvent extends CustomEvent {
+export interface MagentaEvent extends CustomEvent {
     detail: {
-        type: 'transport_toggle' | 'note_input' | 'sample_select';
-        channel?: number;
-        sample?: number;
+        type: 'pattern_generate';
+        pattern?: GeneratedPattern;
     };
-}
-
-export interface AudioTracker {
-    display: any; // Will be updated once AudioTracker is converted
-    draw(metrics: AudioMetrics): void;
-    cleanup(): void;
 }

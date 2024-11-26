@@ -1,359 +1,193 @@
-import { MusicVAE } from '@magenta/music/esm/music_vae';
-import { MusicRNN } from '@magenta/music/esm/music_rnn';
-import type { INoteSequence } from '@magenta/music/esm/protobuf';
-
-interface Note {
-    note?: string;
-    pos: number;
-    vel: number;
-}
-
-interface DrumPattern {
-    kick: Note[];
-    snare: Note[];
-    hihat: Note[];
-}
-
-interface MelodicPattern {
-    bass: Note[];
-    lead: Note[];
-    pad?: Note[];
-}
-
-interface MagentaNote {
-    pitch: number;
-    quantizedStartStep?: number;
-    quantizedEndStep?: number;
-    velocity?: number;
-}
-
-interface NoteSequence {
-    notes: MagentaNote[];
-    totalQuantizedSteps?: number;
-    quantizationInfo?: {
-        stepsPerQuarter: number;
-    };
-}
-
-export interface GeneratedPattern {
-    drums: DrumPattern;
-    melodic: MelodicPattern;
-}
+import type { GeneratedPattern, PatternType, DrumPattern, MelodicPattern, DrumPart, MelodicPart } from '../../types/audio';
 
 export class MagentaPatternGenerator {
-    private musicVAE: MusicVAE | null = null;
-    private musicRNN: MusicRNN | null = null;
-    private initialized: boolean = false;
-    private tempo: number;
-    private currentPattern: GeneratedPattern | null = null;
+    private static instance: MagentaPatternGenerator;
+    private patternCounter = 0;
 
-    constructor(tempo: number = 124) {
-        this.tempo = tempo;
+    private constructor() {}
+
+    public static getInstance(): MagentaPatternGenerator {
+        if (!MagentaPatternGenerator.instance) {
+            MagentaPatternGenerator.instance = new MagentaPatternGenerator();
+        }
+        return MagentaPatternGenerator.instance;
     }
 
-    async initialize(): Promise<void> {
-        try {
-            console.log('Loading Magenta models...');
-            
-            // Initialize models sequentially to avoid memory issues
-            console.log('Initializing MusicVAE...');
-            this.musicVAE = new MusicVAE('https://storage.googleapis.com/magentadata/js/checkpoints/music_vae/drums_2bar_lokl_small');
-            await this.musicVAE.initialize();
-            console.log('MusicVAE initialized');
-            
-            console.log('Initializing MusicRNN...');
-            this.musicRNN = new MusicRNN('https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/basic_rnn');
-            await this.musicRNN.initialize();
-            console.log('MusicRNN initialized');
-            
-            this.initialized = true;
-            console.log('Magenta models loaded successfully');
-        } catch (error) {
-            console.error('Error initializing Magenta models:', error);
-            // Return a basic pattern even if initialization fails
-            this.initialized = true;
-            return;
+    private generatePatternId(): string {
+        this.patternCounter++;
+        return `pattern_${this.patternCounter}`;
+    }
+
+    public generatePattern(type: PatternType): GeneratedPattern {
+        switch (type) {
+            case 'deephouse':
+                return this.generateDeepHousePattern();
+            case 'complex':
+                return this.generateComplexPattern();
+            case 'syncopated':
+                return this.generateSyncopatedPattern();
+            case 'drums':
+                return this.generateDrumPattern();
+            case 'melody':
+                return this.generateMelodyPattern();
+            case 'basic':
+            default:
+                return this.generateBasicPattern();
         }
     }
 
-    async generateDeepHouse(): Promise<GeneratedPattern> {
-        try {
-            // Generate drum patterns
-            console.log('Generating drum patterns...');
-            const drumSequence = await this.generateDrumPattern();
-            const drums = this.convertDrumSequence(drumSequence);
+    private generateBasicPattern(): MelodicPattern {
+        const melodic: MelodicPart = {
+            lead: [
+                { pitch: 60, startTime: 0, endTime: 0.5, pos: 0 },
+                { pitch: 64, startTime: 0.5, endTime: 1.0, pos: 16 },
+                { pitch: 67, startTime: 1.0, endTime: 1.5, pos: 32 },
+                { pitch: 72, startTime: 1.5, endTime: 2.0, pos: 48 }
+            ]
+        };
 
-            // Generate melodic patterns
-            console.log('Generating melodic patterns...');
-            const melodicSequence = await this.generateMelodicPattern();
-            const melodic = this.convertMelodicSequence(melodicSequence);
-
-            // Store and return the generated pattern
-            this.currentPattern = { drums, melodic };
-            
-            // Dispatch event with new pattern
-            window.dispatchEvent(new CustomEvent('magenta-event', {
-                detail: {
-                    type: 'pattern_generate',
-                    pattern: this.currentPattern
-                }
-            }));
-
-            return this.currentPattern;
-        } catch (error) {
-            console.error('Error generating Deep House pattern:', error);
-            // Return a basic pattern if generation fails
-            return this.createBasicPattern();
-        }
+        return {
+            id: this.generatePatternId(),
+            name: 'Basic Pattern',
+            type: 'melodic',
+            melodic,
+            notes: melodic.lead || [],
+            data: melodic.lead?.map(note => note.pitch) || [],
+            totalTime: 2.0
+        };
     }
 
-    private async generateDrumPattern(): Promise<NoteSequence> {
-        try {
-            if (this.musicVAE) {
-                const sequences = await this.musicVAE.sample(1, 0.5);
-                const sequence = sequences[0];
+    private generateDrumPattern(): DrumPattern {
+        const drums: DrumPart = {
+            kick: [{ pitch: 36, startTime: 0, endTime: 0.25, pos: 0 }],
+            snare: [{ pitch: 38, startTime: 0.5, endTime: 0.75, pos: 16 }],
+            hihat: [
+                { pitch: 42, startTime: 0.25, endTime: 0.5, pos: 8 },
+                { pitch: 42, startTime: 0.75, endTime: 1.0, pos: 24 }
+            ]
+        };
 
-                const notes: MagentaNote[] = [];
-                sequence.notes?.forEach(note => {
-                    if (note.pitch != null && note.quantizedStartStep != null) {
-                        notes.push({
-                            pitch: note.pitch,
-                            quantizedStartStep: note.quantizedStartStep,
-                            quantizedEndStep: note.quantizedEndStep ?? note.quantizedStartStep + 1,
-                            velocity: note.velocity ?? 100
-                        });
-                    }
-                });
-
-                // Add four-on-the-floor kick pattern
-                const kickSteps = [0, 8, 16, 24];
-                kickSteps.forEach(step => {
-                    notes.push({
-                        pitch: 36,
-                        quantizedStartStep: step,
-                        quantizedEndStep: step + 1,
-                        velocity: 100
-                    });
-                });
-
-                return {
-                    notes,
-                    totalQuantizedSteps: 32,
-                    quantizationInfo: { stepsPerQuarter: 4 }
-                };
-            }
-            throw new Error('MusicVAE not initialized');
-        } catch (error) {
-            console.error('Error generating drum pattern:', error);
-            // Return a basic four-on-the-floor pattern
-            return this.createBasicDrumPattern();
-        }
-    }
-
-    private async generateMelodicPattern(): Promise<NoteSequence> {
-        try {
-            if (this.musicRNN) {
-                // Create a more house-music oriented seed sequence with valid pitch range
-                const seed: INoteSequence = {
-                    notes: [
-                        // Bass note (moved up 2 octaves for RNN, will be transposed down later)
-                        { pitch: 60, quantizedStartStep: 0, quantizedEndStep: 4, velocity: 100 },
-                        // Chord notes
-                        { pitch: 64, quantizedStartStep: 4, quantizedEndStep: 8, velocity: 80 },
-                        { pitch: 67, quantizedStartStep: 4, quantizedEndStep: 8, velocity: 80 },
-                        { pitch: 71, quantizedStartStep: 4, quantizedEndStep: 8, velocity: 80 }
-                    ],
-                    totalQuantizedSteps: 8,
-                    quantizationInfo: { stepsPerQuarter: 4 }
-                };
-
-                const rnnSteps = 32;
-                const rnnTemp = 0.9;
-                const sequence = await this.musicRNN.continueSequence(
-                    seed,
-                    rnnSteps,
-                    rnnTemp
-                );
-
-                // Post-process the sequence to ensure house music characteristics
-                const processedNotes = sequence.notes?.map(note => {
-                    const pitch = note.pitch ?? 60;
-                    // Transpose bass notes down two octaves
-                    const adjustedPitch = pitch < 64 ? pitch - 24 : pitch;
-                    return {
-                        pitch: adjustedPitch,
-                        quantizedStartStep: note.quantizedStartStep ?? 0,
-                        quantizedEndStep: note.quantizedEndStep ?? 1,
-                        velocity: note.velocity ?? 80
-                    };
-                }) ?? [];
-
-                // Ensure we have some bass notes
-                const bassNotes = processedNotes.filter(note => note.pitch < 48);
-                if (bassNotes.length < 4) {
-                    [0, 8, 16, 24].forEach(step => {
-                        processedNotes.push({
-                            pitch: 36,
-                            quantizedStartStep: step,
-                            quantizedEndStep: step + 4,
-                            velocity: 100
-                        });
-                    });
-                }
-
-                return {
-                    notes: processedNotes,
-                    totalQuantizedSteps: 32,
-                    quantizationInfo: { stepsPerQuarter: 4 }
-                };
-            }
-            throw new Error('MusicRNN not initialized');
-        } catch (error) {
-            console.error('Error generating melodic pattern:', error);
-            // Return a basic melodic pattern
-            return this.createBasicMelodicPattern();
-        }
-    }
-
-    private createBasicDrumPattern(): NoteSequence {
-        const kickSteps = [0, 8, 16, 24];
-        const snareSteps = [8, 24];
-        const hihatSteps = [0, 4, 8, 12, 16, 20, 24, 28];
-
-        const notes: MagentaNote[] = [
-            ...kickSteps.map(step => ({
-                pitch: 36,
-                quantizedStartStep: step,
-                quantizedEndStep: step + 1,
-                velocity: 100
-            })),
-            ...snareSteps.map(step => ({
-                pitch: 38,
-                quantizedStartStep: step,
-                quantizedEndStep: step + 1,
-                velocity: 80
-            })),
-            ...hihatSteps.map(step => ({
-                pitch: 42,
-                quantizedStartStep: step,
-                quantizedEndStep: step + 1,
-                velocity: 60
-            }))
+        const allNotes = [
+            ...(drums.kick || []),
+            ...(drums.snare || []),
+            ...(drums.hihat || [])
         ];
 
         return {
-            notes,
-            totalQuantizedSteps: 32,
-            quantizationInfo: { stepsPerQuarter: 4 }
+            id: this.generatePatternId(),
+            name: 'Drum Pattern',
+            type: 'drum',
+            drums,
+            notes: allNotes,
+            data: allNotes.map(note => note.pitch),
+            totalTime: 1.0
         };
     }
 
-    private createBasicMelodicPattern(): NoteSequence {
-        const notes: MagentaNote[] = [
-            // Bass line
-            { pitch: 36, quantizedStartStep: 0, quantizedEndStep: 4, velocity: 100 },
-            { pitch: 36, quantizedStartStep: 8, quantizedEndStep: 12, velocity: 100 },
-            { pitch: 36, quantizedStartStep: 16, quantizedEndStep: 20, velocity: 100 },
-            { pitch: 36, quantizedStartStep: 24, quantizedEndStep: 28, velocity: 100 },
-            
-            // Chord progression
-            { pitch: 48, quantizedStartStep: 4, quantizedEndStep: 8, velocity: 80 },
-            { pitch: 52, quantizedStartStep: 4, quantizedEndStep: 8, velocity: 80 },
-            { pitch: 55, quantizedStartStep: 4, quantizedEndStep: 8, velocity: 80 },
-            
-            { pitch: 50, quantizedStartStep: 12, quantizedEndStep: 16, velocity: 80 },
-            { pitch: 53, quantizedStartStep: 12, quantizedEndStep: 16, velocity: 80 },
-            { pitch: 57, quantizedStartStep: 12, quantizedEndStep: 16, velocity: 80 },
-            
-            { pitch: 48, quantizedStartStep: 20, quantizedEndStep: 24, velocity: 80 },
-            { pitch: 52, quantizedStartStep: 20, quantizedEndStep: 24, velocity: 80 },
-            { pitch: 55, quantizedStartStep: 20, quantizedEndStep: 24, velocity: 80 },
-            
-            { pitch: 50, quantizedStartStep: 28, quantizedEndStep: 32, velocity: 80 },
-            { pitch: 53, quantizedStartStep: 28, quantizedEndStep: 32, velocity: 80 },
-            { pitch: 57, quantizedStartStep: 28, quantizedEndStep: 32, velocity: 80 }
+    private generateMelodyPattern(): MelodicPattern {
+        const melodic: MelodicPart = {
+            lead: [
+                { pitch: 60, startTime: 0, endTime: 0.5, pos: 0 },
+                { pitch: 64, startTime: 0.5, endTime: 1.0, pos: 16 },
+                { pitch: 67, startTime: 1.0, endTime: 1.5, pos: 32 },
+                { pitch: 71, startTime: 1.5, endTime: 2.0, pos: 48 },
+                { pitch: 72, startTime: 2.0, endTime: 2.5, pos: 56 }
+            ]
+        };
+
+        return {
+            id: this.generatePatternId(),
+            name: 'Melody Pattern',
+            type: 'melodic',
+            melodic,
+            notes: melodic.lead || [],
+            data: melodic.lead?.map(note => note.pitch) || [],
+            totalTime: 2.5
+        };
+    }
+
+    private generateDeepHousePattern(): DrumPattern {
+        const drums: DrumPart = {
+            kick: [
+                { pitch: 36, startTime: 0, endTime: 0.25, pos: 0 },
+                { pitch: 36, startTime: 1.0, endTime: 1.25, pos: 32 }
+            ],
+            snare: [
+                { pitch: 38, startTime: 0.5, endTime: 0.75, pos: 16 },
+                { pitch: 38, startTime: 1.5, endTime: 1.75, pos: 48 }
+            ],
+            hihat: [
+                { pitch: 42, startTime: 0.25, endTime: 0.5, pos: 8 },
+                { pitch: 42, startTime: 0.75, endTime: 1.0, pos: 24 },
+                { pitch: 42, startTime: 1.25, endTime: 1.5, pos: 40 },
+                { pitch: 42, startTime: 1.75, endTime: 2.0, pos: 56 }
+            ]
+        };
+
+        const allNotes = [
+            ...(drums.kick || []),
+            ...(drums.snare || []),
+            ...(drums.hihat || [])
         ];
 
         return {
-            notes,
-            totalQuantizedSteps: 32,
-            quantizationInfo: { stepsPerQuarter: 4 }
+            id: this.generatePatternId(),
+            name: 'Deep House Pattern',
+            type: 'drum',
+            drums,
+            notes: allNotes,
+            data: allNotes.map(note => note.pitch),
+            totalTime: 2.0
         };
     }
 
-    private createBasicPattern(): GeneratedPattern {
-        const drums = this.convertDrumSequence(this.createBasicDrumPattern());
-        const melodic = this.convertMelodicSequence(this.createBasicMelodicPattern());
-        return { drums, melodic };
-    }
-
-    private convertDrumSequence(sequence: NoteSequence): DrumPattern {
-        const drums: DrumPattern = {
-            kick: [],
-            snare: [],
-            hihat: []
+    private generateComplexPattern(): MelodicPattern {
+        const melodic: MelodicPart = {
+            lead: [
+                { pitch: 36, startTime: 0, endTime: 0.25, pos: 0 },
+                { pitch: 38, startTime: 0.25, endTime: 0.5, pos: 8 },
+                { pitch: 42, startTime: 0.5, endTime: 0.75, pos: 16 },
+                { pitch: 45, startTime: 0.75, endTime: 1.0, pos: 24 },
+                { pitch: 48, startTime: 1.0, endTime: 1.25, pos: 32 },
+                { pitch: 50, startTime: 1.25, endTime: 1.5, pos: 40 },
+                { pitch: 53, startTime: 1.5, endTime: 1.75, pos: 48 },
+                { pitch: 55, startTime: 1.75, endTime: 2.0, pos: 56 }
+            ]
         };
 
-        sequence.notes.forEach(note => {
-            const pos = Math.floor((note.quantizedStartStep ?? 0) * 2);
-            const vel = Math.floor(((note.velocity ?? 100) / 127) * 64);
-
-            switch (note.pitch) {
-                case 36:  // Kick
-                    drums.kick.push({ pos, vel });
-                    break;
-                case 38:  // Snare
-                    drums.snare.push({ pos, vel });
-                    break;
-                case 42:  // Closed Hi-hat
-                    drums.hihat.push({ pos, vel });
-                    break;
-            }
-        });
-
-        return drums;
+        return {
+            id: this.generatePatternId(),
+            name: 'Complex Pattern',
+            type: 'melodic',
+            melodic,
+            notes: melodic.lead || [],
+            data: melodic.lead?.map(note => note.pitch) || [],
+            totalTime: 2.0
+        };
     }
 
-    private convertMelodicSequence(sequence: NoteSequence): MelodicPattern {
-        const melodic: MelodicPattern = {
-            bass: [],
-            lead: [],
-            pad: []
+    private generateSyncopatedPattern(): MelodicPattern {
+        const melodic: MelodicPart = {
+            lead: [
+                { pitch: 60, startTime: 0, endTime: 0.25, pos: 0 },
+                { pitch: 64, startTime: 0.375, endTime: 0.625, pos: 12 },
+                { pitch: 67, startTime: 0.75, endTime: 1.0, pos: 24 },
+                { pitch: 71, startTime: 1.125, endTime: 1.375, pos: 36 },
+                { pitch: 72, startTime: 1.5, endTime: 1.75, pos: 48 }
+            ]
         };
 
-        sequence.notes.forEach(note => {
-            const pos = Math.floor((note.quantizedStartStep ?? 0) * 2);
-            const vel = Math.floor(((note.velocity ?? 80) / 127) * 64);
-            const noteStr = this.midiToNote(note.pitch);
-
-            if (note.pitch < 48) {  // Bass notes
-                melodic.bass.push({ note: noteStr, pos, vel });
-            } else if (note.pitch < 72) {  // Pad notes
-                melodic.pad?.push({ note: noteStr, pos, vel });
-            } else {  // Lead notes
-                melodic.lead.push({ note: noteStr, pos, vel });
-            }
-        });
-
-        return melodic;
-    }
-
-    private midiToNote(midi: number): string {
-        const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-        const octave = Math.floor(midi / 12) - 1;
-        const note = notes[midi % 12];
-        return `${note}${octave}`;
-    }
-
-    getCurrentPattern(): GeneratedPattern | null {
-        return this.currentPattern;
-    }
-
-    getTempo(): number {
-        return this.tempo;
-    }
-
-    setTempo(tempo: number): void {
-        this.tempo = Math.max(60, Math.min(200, tempo));
+        return {
+            id: this.generatePatternId(),
+            name: 'Syncopated Pattern',
+            type: 'melodic',
+            melodic,
+            notes: melodic.lead || [],
+            data: melodic.lead?.map(note => note.pitch) || [],
+            totalTime: 2.0
+        };
     }
 }
+
+export const magentaPatternGenerator = MagentaPatternGenerator.getInstance();
+export default magentaPatternGenerator;

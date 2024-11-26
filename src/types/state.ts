@@ -1,4 +1,5 @@
 import { IEventBus } from './events';
+import { SceneName } from './scene';
 
 // Audio State
 export interface AudioState {
@@ -19,15 +20,15 @@ export interface AudioState {
 
 // Scene State
 export interface Scene {
-  id: string;
+  id: SceneName;
   name: string;
   active: boolean;
   type: 'basic' | 'enhanced';
 }
 
 export interface SceneState {
-  currentScene: string;
-  scenes: Record<string, Scene>;
+  currentScene: SceneName;
+  scenes: Record<SceneName, Scene>;
   loading: boolean;
   error?: string;
 }
@@ -123,7 +124,7 @@ export const defaultSceneState: SceneState = {
       active: false,
       type: 'enhanced'
     }
-  },
+  } as Record<SceneName, Scene>,
   loading: false
 };
 

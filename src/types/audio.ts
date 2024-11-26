@@ -1,76 +1,118 @@
-import type { AudioMode } from './scene';
-
-export interface AudioMetrics {
-    pattern: any | null;
-    currentPattern: number;
-    currentRow: number;
+// Audio Manager Interface
+export interface IAudioManager {
     isPlaying: boolean;
-    bpm: number;
-    bassIntensity: string;
-    midIntensity: string;
-    highIntensity: string;
-    waveform: Float32Array;
-    samples: string[];
-    rows: number;
-    channels: number;
-    sequence: number[];
-}
-
-export interface Sample {
-    name: string;
-    url: string;
-    baseNote: string;
-}
-
-export interface SampleManager {
-    loadSample(name: string, url: string, options?: any): Promise<boolean>;
-    listSamples(): Sample[];
-}
-
-export interface TrackerState {
-    currentPattern: number;
-    currentRow: number;
-    bpm: number;
-    sequence: number[];
-}
-
-export interface TrackerSequencer {
     start(): void;
     stop(): void;
-    setBPM(bpm: number): boolean;
-    setAudioDestination(destination: AudioNode): boolean;
-    getCurrentState(): TrackerState;
-    patterns: Map<number, any>;
-    addPattern(index: number, pattern: any): boolean;
-    setSequence(sequence: number[]): boolean;
+    setVolume(volume: number): void;
+    getCurrentVolume(): number;
+    getVolume(): number;
+    setFrequency(frequency: number): void;
+    getCurrentFrequency(): number;
+    getFrequency(): number;
     cleanup(): void;
 }
 
-export interface ImportedModules {
-    SampleManager: any;
-    TrackerPattern: any;
-    TrackerSequencer: any;
+// Enhanced Audio Manager Interface
+export interface IEnhancedAudioManager extends IAudioManager {
+    setPattern(pattern: GeneratedPattern): void;
+    getAudioMetrics(): AudioMetrics;
+    initializeWithMode(mode?: AudioMode): Promise<boolean>;
 }
 
-export interface IAudioManager {
-    context: AudioContext | null;
+// Audio Mode
+export type AudioMode = 'basic' | 'tracker' | 'synth';
+
+// Audio State
+export interface AudioState {
     isPlaying: boolean;
-    isInitialized(): boolean;
-    initialize(): Promise<void>;
-    initializeWithMode(mode: AudioMode): Promise<boolean>;
-    start(): void;
-    stop(): void;
-    cleanup(closeContext?: boolean): Promise<void>;
-    setVolume(value: number): void;
-    getVolume(): number;
-    setTempo(tempo: number): void;
-    setPattern(pattern: string): void;
-    getAudioMetrics(): AudioMetrics | null;
-    getWaveform(): Float32Array;
-    getCurrentPattern(): any | null;
-    setFrequency(freq: number): void;
-    setAmplitude(amp: number): void;
-    getAmplitude(): number;
-    getFrequency(): number;
-    mapMouseToAudio(mouseX: number, mouseY: number, width: number, height: number): void;
+    volume: number;
+    frequency: number;
+}
+
+// Audio Metrics
+export interface AudioMetrics {
+    volume: number;
+    frequency: number;
+    waveform: Float32Array;
+    pattern?: GeneratedPattern;
+    currentPattern?: number;
+    currentRow?: number;
+    isPlaying?: boolean;
+    bpm?: number;
+    bassIntensity?: string;
+    midIntensity?: string;
+    highIntensity?: string;
+    samples?: string[];
+    rows?: number;
+    channels?: number;
+    sequence?: number[];
+}
+
+// Pattern Types
+export type PatternType = 'drum' | 'melodic' | 'basic' | 'deephouse' | 'complex' | 'syncopated' | 'drums' | 'melody';
+
+// Note Interface
+export interface Note {
+    pitch: number;
+    startTime: number;
+    endTime: number;
+    velocity?: number;
+    duration?: number;
+    pos?: number;
+}
+
+// Pattern Base Interface
+interface BasePattern {
+    id: string;
+    name: string;
+    notes: Note[];
+    data: number[];
+    totalTime: number;
+}
+
+// Pattern Parts
+export interface DrumPart {
+    kick?: Note[];
+    snare?: Note[];
+    hihat?: Note[];
+}
+
+export interface MelodicPart {
+    bass?: Note[];
+    lead?: Note[];
+}
+
+// Pattern Interfaces
+export interface DrumPattern extends BasePattern {
+    type: 'drum';
+    drums: DrumPart;
+}
+
+export interface MelodicPattern extends BasePattern {
+    type: 'melodic';
+    melodic: MelodicPart;
+}
+
+export type GeneratedPattern = DrumPattern | MelodicPattern;
+
+// Audio Configuration
+export interface AudioConfig {
+    bpm?: number;
+    baseFrequency?: number;
+    volume?: number;
+    waveform?: OscillatorType;
+    initialVolume?: number;
+    initialPattern?: GeneratedPattern;
+    mode?: AudioMode;
+    patterns?: {
+        drums: DrumPattern[];
+        melody: MelodicPattern[];
+    };
+}
+
+// Audio Events
+export interface AudioEvent {
+    type: string;
+    time: number;
+    data: any;
 }

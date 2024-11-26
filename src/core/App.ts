@@ -78,6 +78,14 @@ export class App extends Manager {
       sceneManager.windowResized();
     });
 
+    // Ensure touch events are handled properly
+    document.addEventListener('touchstart', (e) => {
+      // Prevent default only if touching the canvas
+      if (e.target instanceof HTMLCanvasElement) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
     // Listen for visibility change to pause/resume audio
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {

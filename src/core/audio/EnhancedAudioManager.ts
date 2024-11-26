@@ -42,26 +42,16 @@ export class EnhancedAudioManager extends AudioBase {
 
         // Default samples to load
         // Get the base URL from the current script's src attribute or fall back to relative path
-        const getBasePath = () => {
-            const scripts = document.getElementsByTagName('script');
-            for (let i = 0; i < scripts.length; i++) {
-                const src = scripts[i].src;
-                if (src.includes('/audio-viz/assets/')) {
-                    return src.split('/assets/')[0] + '/';
-                }
-            }
-            return './';
-        };
-        
-        const basePath = getBasePath();
-        console.log('Using base path for samples:', basePath);
+        // Use the root samples directory
+        const basePath = '/samples/';
+        console.log('Using samples from:', basePath);
         
         this.defaultSamples = [
-            { name: 'kick', url: `${basePath}samples/kick.wav`, baseNote: 'C3' },
-            { name: 'snare', url: `${basePath}samples/snare.wav`, baseNote: 'D3' },
-            { name: 'hihat', url: `${basePath}samples/hihat.wav`, baseNote: 'F#3' },
-            { name: 'bass', url: `${basePath}samples/bass.wav`, baseNote: 'C2' },
-            { name: 'lead', url: `${basePath}samples/lead.wav`, baseNote: 'C4' }
+            { name: 'kick', url: `${basePath}kick.wav`, baseNote: 'C3' },
+            { name: 'snare', url: `${basePath}snare.wav`, baseNote: 'D3' },
+            { name: 'hihat', url: `${basePath}hihat.wav`, baseNote: 'F#3' },
+            { name: 'bass', url: `${basePath}bass.wav`, baseNote: 'C2' },
+            { name: 'lead', url: `${basePath}lead.wav`, baseNote: 'C4' }
         ];
     }
 
@@ -119,10 +109,20 @@ export class EnhancedAudioManager extends AudioBase {
 
             // Setup audio chain
             console.log('Setting up audio chain...');
-            if (this.masterGain && this.compressor && this.analyser) {
+            if (this.masterGain && this.compressor && this.analyser && this.context) {
+                // Reset connections
+                this.masterGain.disconnect();
+                this.analyser.disconnect();
+                this.compressor.disconnect();
+                
+                // Create chain: masterGain -> analyser -> compressor -> destination
                 this.masterGain.connect(this.analyser);
                 this.analyser.connect(this.compressor);
                 this.compressor.connect(this.context.destination);
+                
+                console.log('Audio chain connected successfully');
+            } else {
+                throw new Error('Audio nodes not properly initialized');
             }
 
             // Initialize sequencer
@@ -220,10 +220,15 @@ export class EnhancedAudioManager extends AudioBase {
             const state = this.sequencer?.getCurrentState() || {} as TrackerState;
             const pattern = this.getCurrentPattern();
             
-            // Calculate frequency band intensities
-            const bassIntensity = data.slice(0, 10).reduce((a, b) => a + b, 0) / 2550;
-            const midIntensity = data.slice(10, 100).reduce((a, b) => a + b, 0) / 22950;
-            const highIntensity = data.slice(100, 200).reduce((a, b) => a + b, 0) / 25500;
+            // Calculate frequency band intensities with improved ranges and scaling
+            const bassRange = data.slice(0, 40);  // 0-200Hz
+            const midRange = data.slice(40, 200);  // 200-1000Hz
+            const highRange = data.slice(200, 500); // 1000-2500Hz
+
+            // Get average intensity for each range with non-linear scaling
+            const bassIntensity = Math.pow(bassRange.reduce((a, b) => a + b, 0) / (bassRange.length * 255), 1.5);
+            const midIntensity = Math.pow(midRange.reduce((a, b) => a + b, 0) / (midRange.length * 255), 1.3);
+            const highIntensity = Math.pow(highRange.reduce((a, b) => a + b, 0) / (highRange.length * 255), 1.1);
 
             // Get sample list and map to names only
             const sampleList = this.sampleManager?.listSamples().map(s => s.name) || [];
@@ -234,9 +239,9 @@ export class EnhancedAudioManager extends AudioBase {
                 currentRow: state.currentRow || 0,
                 isPlaying: this.isPlaying,
                 bpm: state.bpm || this._currentTempo,
-                bassIntensity: bassIntensity.toFixed(3),
-                midIntensity: midIntensity.toFixed(3),
-                highIntensity: highIntensity.toFixed(3),
+                bassIntensity: bassIntensity,
+                midIntensity: midIntensity,
+                highIntensity: highIntensity,
                 waveform: this.getWaveform(),
                 samples: sampleList,
                 rows: pattern ? pattern.rows : 64,
@@ -251,9 +256,9 @@ export class EnhancedAudioManager extends AudioBase {
                 currentRow: 0,
                 isPlaying: false,
                 bpm: this._currentTempo,
-                bassIntensity: '0.000',
-                midIntensity: '0.000',
-                highIntensity: '0.000',
+                bassIntensity: 0,
+                midIntensity: 0,
+                highIntensity: 0,
                 waveform: new Float32Array(1024),
                 samples: [],
                 rows: 64,
@@ -276,9 +281,20 @@ export class EnhancedAudioManager extends AudioBase {
 
     override getWaveform(): Float32Array {
         try {
-            if (!this.analyser || !this.waveformArray) return new Float32Array(1024);
+            if (!this.analyser || !this.waveformArray) {
+                console.warn('Analyzer or waveform array not initialized');
+                return new Float32Array(1024);
+            }
+            
+            // Get time domain data
             this.analyser.getByteTimeDomainData(this.waveformArray);
-            return new Float32Array(Array.from(this.waveformArray).map(v => (v - 128) / 128));
+            
+            // Convert to normalized float values (-1 to 1)
+            const floatArray = new Float32Array(this.waveformArray.length);
+            for (let i = 0; i < this.waveformArray.length; i++) {
+                floatArray[i] = (this.waveformArray[i] - 128) / 128;
+            }
+            return floatArray;
         } catch (error) {
             console.error('Error getting waveform:', error);
             return new Float32Array(1024);

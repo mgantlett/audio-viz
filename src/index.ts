@@ -66,21 +66,35 @@ const sketch = (p: p5): void => {
         }
     };
 
-    // Add mouse move handler for audio control
-    p.mouseMoved = function(): void {
+    // Add mouse move and touch handlers for audio control
+    const handleInteraction = (x: number, y: number): void => {
         try {
             if (window.sceneManager && 
                 window.audioManager && 
                 window.audioManager.isInitialized() &&
                 window.audioManager.isPlaying) {
-                const freq = p.map(p.mouseX, 0, p.width, 200, 800);
-                const amp = p.map(p.mouseY, 0, p.height, 1, 0);
+                const freq = p.map(x, 0, p.width, 200, 800);
+                const amp = p.map(y, 0, p.height, 1, 0);
                 window.audioManager.setFrequency(freq);
                 window.audioManager.setAmplitude(amp);
             }
         } catch (error) {
-            console.error('Error handling mouse move:', error);
+            console.error('Error handling interaction:', error);
         }
+    };
+
+    p.mouseMoved = function(): void {
+        handleInteraction(p.mouseX, p.mouseY);
+    };
+
+    // Add touch handlers
+    p.touchStarted = function(): void {
+        handleInteraction(p.touches[0]?.x || p.mouseX, p.touches[0]?.y || p.mouseY);
+    };
+
+    p.touchMoved = function(): void {
+        handleInteraction(p.touches[0]?.x || p.mouseX, p.touches[0]?.y || p.mouseY);
+        return false; // Prevent default
     };
 };
 

@@ -21,8 +21,8 @@ class StickFigure {
     }
 
     draw(energy: number): void {
-        // Ensure energy is a valid number and not NaN, with minimum value
-        energy = isNaN(energy) ? 0.1 : Math.max(energy, 0.1);
+        // Ensure energy is a valid number and not NaN, with higher minimum value for better visibility
+        energy = isNaN(energy) ? 0.3 : Math.max(energy, 0.3);
         
         this.p.push();
         this.p.translate(this.x, this.y);
@@ -74,8 +74,8 @@ class StickFigure {
     }
 
     update(energy: number): void {
-        // Ensure energy is a valid number and not NaN, with minimum value
-        energy = isNaN(energy) ? 0.1 : Math.max(energy, 0.1);
+        // Ensure energy is a valid number and not NaN, with higher minimum value for better visibility
+        energy = isNaN(energy) ? 0.3 : Math.max(energy, 0.3);
         
         // Scale slightly even at low energy
         this.scale = this.p.map(energy, 0, 1, 0.9, 1.1);
@@ -124,13 +124,13 @@ export class StickFigures extends Scene {
         }
     }
 
-    draw(amplitude: number = 0.1, _frequency: number = 440): void {
+    draw(amplitude: number = 0.3, _frequency: number = 440): void {
         try {
             // Clear background
             this.p5.background(0);
 
-            // Ensure amplitude is a valid number and not NaN, with a minimum value for default animation
-            amplitude = isNaN(amplitude) ? 0.1 : Math.max(amplitude, 0.1);
+            // Ensure amplitude is a valid number and not NaN, with a higher minimum value for better default visibility
+            amplitude = isNaN(amplitude) ? 0.3 : Math.max(amplitude, 0.3);
 
             // Update and draw figures
             this.figures.forEach(figure => {

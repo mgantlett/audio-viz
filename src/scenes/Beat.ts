@@ -319,11 +319,12 @@ export class Beat extends Scene {
     }
 
     private detectBeat(bassIntensity: number, currentTime: number): boolean {
-        const threshold = 0.35; // Lower threshold to catch kicks better
+        const threshold = 0.5; // Adjusted for new non-linear intensity scaling
         const minInterval = this.beatInterval / 2; // Sync with our pattern's timing
+        const parsedBassIntensity = parseFloat(bassIntensity as any) || 0;
         
-        // Detect strong bass hits (kicks)
-        if (bassIntensity > threshold && (currentTime - this.lastBeatTime) > minInterval) {
+        // Detect strong bass hits (kicks) with smoother detection
+        if (parsedBassIntensity > threshold && (currentTime - this.lastBeatTime) > minInterval) {
             this.lastBeatTime = currentTime;
             // Update beat interval based on tempo (if needed)
             const tempo = audioManager.getAudioMetrics()?.bpm || 120;
@@ -356,12 +357,12 @@ export class Beat extends Scene {
                 metrics = {} as AudioMetrics;
             }
 
-            // Update and draw visual elements
-            const midFreq = parseFloat(metrics.midIntensity) || 0;
-            const highFreq = parseFloat(metrics.highIntensity) || 0;
-            const bassIntensity = parseFloat(metrics.bassIntensity) || 0;
+            // Update and draw visual elements with direct numeric values
+            const midFreq = metrics.midIntensity as number || 0;
+            const highFreq = metrics.highIntensity as number || 0;
+            const bassIntensity = metrics.bassIntensity as number || 0;
             const waveform = metrics.waveform || new Float32Array(1024);
-            const currentTime = Date.now();
+            const currentTime = this.p5.millis(); // Use p5's timing for consistency
             const isBeat = this.detectBeat(bassIntensity, currentTime);
 
             this.updateParticles(midFreq, bassIntensity);

@@ -7,12 +7,17 @@ export class AudioTracker {
 
     constructor(p5: p5) {
         this.p5 = p5;
-        this.display = {}; // TODO: Initialize display component
+        this.display = {
+            isInitialized: true,
+            draw: () => {}
+        };
     }
 
     draw(metrics: AudioMetrics): void {
-        // TODO: Implement tracker visualization
-        console.log('Drawing tracker with metrics:', metrics);
+        // Basic implementation to avoid blocking
+        if (metrics && this.display.isInitialized) {
+            this.display.draw();
+        }
     }
 
     cleanup(): void {

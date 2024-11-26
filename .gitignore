@@ -45,11 +45,6 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# Audio files
-samples/*.wav
-samples/*.mp3
-samples/*.ogg
-
 # Temporary files
 *.tmp
 *.temp
